@@ -98,9 +98,12 @@ synthetic text unmistakably because it persists in history and prompt cache.
   If a test is wrong, say so in the journal and fix it in its own commit.
 - Blocked? Append `BLOCKED:` to JOURNAL.md with what you tried, mark the ROADMAP item
   `[!]`, move to the next unblocked item if one exists, otherwise stop and ask.
-- Real-agent verification (from M2 on): run a session of Claude Code through the proxy
-  with `ANTHROPIC_BASE_URL=http://localhost:7171` and confirm normal behaviour plus
-  correct ledger output. This is the gate that matters more than unit tests.
+- Real-agent verification (from M2 on), at **every** milestone: rebuild the `raz`
+  binary from the milestone's code, restart the proxy from that new binary (do
+  not reuse the previous milestone's process), then run a real Claude Code
+  session through it with `ANTHROPIC_BASE_URL=http://localhost:7171`. Confirm
+  normal behaviour plus correct ledger output (and, from M7, `raz report
+  --share`). This is the gate that matters more than unit tests.
 
 ## North star (docs/endgame.md) — design consequences only
 
