@@ -21,4 +21,5 @@
 2026-08-20 01:05 — M8 — opt-in --capture (request tee, schema v1, retention) + raz replay stub-batch table (native/judge bands, never interactive). Rebuilt /tmp/raz-m8; claude -p → pong complete in=2 out=4 capture_id set; report --share redacted. BLOCKED: live provider batch + one week of captured tasks — next: M9 fuse
 2026-08-20 01:12 — M9 — --max-per-task + --subagent-share vouchers; synthetic end_turn then 429 x-should-retry:false. Rebuilt /tmp/raz-m9; claude -p pong (Last overshoot); next req synthetic, then 429. spend 146593 vs ceiling 0 (one in-flight). README bound verbatim — next: M10 prefix inference
 2026-08-20 01:18 — M10 — prefix digest live for undeclared agents; min depth 2 stays. docs/prefix-inference.md 0/32 false-merge, 0/32 false-split. Rebuilt /tmp/raz-m10; claude -p pong complete. BLOCKED: aider/opencode live — next: M11 stamp/blame
+2026-08-20 01:24 — M11 — raz stamp/blame; capture-grade (conf=1.0) gate. Rebuilt /tmp/raz-m11; claude -p pong; stamp one-line Raz-Cost declared. BLOCKED: real PR stamp — next: M12 doctor
 

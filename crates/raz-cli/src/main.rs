@@ -25,6 +25,10 @@ enum Cmd {
     Report(ReportArgs),
     /// Replay captured tasks via a batch sink (never the interactive proxy).
     Replay(ReplayArgs),
+    /// Write a one-line Raz-Cost git trailer/note (capture-grade identity only).
+    Stamp(StampArgs),
+    /// Per-node cost as hunk-shaped rows.
+    Blame(BlameArgs),
 }
 
 #[derive(clap::Args)]
@@ -75,6 +79,25 @@ struct ReplayArgs {
 }
 
 #[derive(clap::Args)]
+struct StampArgs {
+    /// Git ref to note (default HEAD). Printed if git notes fails.
+    #[arg(default_value = "HEAD")]
+    git_ref: String,
+    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    ledger: PathBuf,
+    #[arg(long)]
+    rates: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct BlameArgs {
+    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    ledger: PathBuf,
+    #[arg(long)]
+    rates: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
 struct ReportArgs {
     #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
     ledger: PathBuf,
@@ -102,6 +125,14 @@ async fn go() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         Cmd::Replay(args) => {
             replay_cmd(args)?;
+            Ok(())
+        }
+        Cmd::Stamp(args) => {
+            stamp_cmd(args)?;
+            Ok(())
+        }
+        Cmd::Blame(args) => {
+            blame_cmd(args)?;
             Ok(())
         }
     }
@@ -212,6 +243,34 @@ fn replay_cmd(args: ReplayArgs) -> Result<(), Box<dyn std::error::Error + Send +
     }
     let rows = replay(&recs, &opts, &StubBatch::default());
     print!("{}", raz_ledger::render_table(&rows));
+    Ok(())
+}
+
+fn stamp_cmd(args: StampArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let records = Ledger::read_all(&args.ledger)?;
+    let rates = match args.rates {
+        Some(p) => Some(load_rates(&p)?),
+        None => None,
+    };
+    let line = raz_ledger::format_stamp(&records, rates.as_ref())?;
+    println!("{line}");
+    let git = std::process::Command::new("git")
+        .args(["notes", "add", "-f", "-m", &line, &args.git_ref])
+        .status();
+    match git {
+        Ok(s) if s.success() => eprintln!("raz stamp: noted {}", args.git_ref),
+        _ => eprintln!("raz stamp: printed only (git notes unavailable)"),
+    }
+    Ok(())
+}
+
+fn blame_cmd(args: BlameArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let records = Ledger::read_all(&args.ledger)?;
+    let rates = match args.rates {
+        Some(p) => Some(load_rates(&p)?),
+        None => None,
+    };
+    print!("{}", raz_ledger::format_blame(&records, rates.as_ref()));
     Ok(())
 }
 
@@ -338,6 +397,20 @@ mod tests {
         assert!((parse_share("30%").unwrap() - 0.3).abs() < 1e-9);
         assert!((parse_share("0.3").unwrap() - 0.3).abs() < 1e-9);
         assert!((parse_share("30").unwrap() - 0.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn stamp_and_blame_parse() {
+        let s = Cli::try_parse_from(["raz", "stamp", "HEAD", "--ledger", "x.jsonl"]).unwrap();
+        match s.cmd {
+            Cmd::Stamp(a) => assert_eq!(a.git_ref, "HEAD"),
+            _ => panic!("stamp"),
+        }
+        let b = Cli::try_parse_from(["raz", "blame", "--ledger", "x.jsonl"]).unwrap();
+        match b.cmd {
+            Cmd::Blame(a) => assert_eq!(a.ledger, PathBuf::from("x.jsonl")),
+            _ => panic!("blame"),
+        }
     }
 
     #[test]

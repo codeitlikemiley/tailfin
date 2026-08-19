@@ -108,12 +108,12 @@ second `/v1/messages` after the overshoot.
 Gate: BLOCKED: aider/opencode live session with zero declared headers not run here.
 
 ## M11 — cost stamps (endgame L4)
-- [ ] `raz stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,
+- [x] `raz stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,
       incomplete count, identity confidence; opt-in per repo
-- [ ] `raz blame`: per-hunk cost rendering
-- [ ] stamps are one line collapsed, expandable; no stamp without `--capture`-grade
+- [x] `raz blame`: per-hunk cost rendering
+- [x] stamps are one line collapsed, expandable; no stamp without `--capture`-grade
       attribution confidence
-Gate: a real PR carries a stamp a reviewer understands without explanation.
+Gate: BLOCKED: a published PR with a stamp a reviewer understands — not produced here.
 
 ## M12 — doctor (conflict detector)
 - [ ] `raz doctor` reads a LiteLLM/gateway config and reports: budget-fallback chains

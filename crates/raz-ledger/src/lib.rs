@@ -4,6 +4,7 @@
 
 mod capture;
 mod replay;
+mod stamp;
 
 pub use capture::{
     body_meta, default_capture_dir, parse_retention, CaptureRecord, CaptureStore, CAPTURE_SCHEMA,
@@ -13,6 +14,7 @@ pub use replay::{
     render_table, replay, sample_captures, score_output, BatchSink, ReplayOpts, ReplayOutput,
     ReplayRow, Score, StubBatch,
 };
+pub use stamp::{format_blame, format_stamp, stamp_allowed, CAPTURE_GRADE};
 
 use raz_ident::NodeRef;
 use raz_tree::{Arena, Task};
