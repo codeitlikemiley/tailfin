@@ -36,7 +36,7 @@ right parent), verified against the transcript on disk.
 - [x] SseDecoder + Meter consume teed frames; usage merged into the arena node
 - [x] both dialects: Anthropic /v1/messages and OpenAI /chat/completions
 - [x] incomplete streams marked, counted, reported
-- [ ] cross-check: token totals within 1% of the provider-reported usage for a real
+- [x] cross-check: token totals within 1% of the provider-reported usage for a real
       session (cache tiers compared separately)
 Gate: the cross-check on a real session.
 
