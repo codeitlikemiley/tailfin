@@ -26,7 +26,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -37,7 +37,7 @@ jobs:
         run: cargo build -p raz-cli --release --locked --target ${{ matrix.target }}
       - name: pack
         run: bash scripts/pack-release.sh "target/${{ matrix.target }}/release/raz" "${{ matrix.target }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: raz-${{ matrix.target }}
           path: dist/
@@ -49,8 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: stage assets
@@ -89,7 +89,7 @@ jobs:
             echo
             echo "Checksums are in \`SHA256SUMS\`. macOS arm64/x64 and Linux x64 only — no Windows build."
           } > release-notes.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           body_path: release-notes.md
