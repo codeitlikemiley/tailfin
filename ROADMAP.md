@@ -25,10 +25,10 @@ Gate: a curl of a non-streaming completion through raz is byte-identical to dire
 Gate: the real-agent session, plus the kill-the-meter test, both pass.
 
 ## M3 — identity wiring (raz-ident into the proxy)
-- [ ] resolve NodeRef per request: declared headers first (Claude Code, Codex)
-- [ ] prefix digest computed from request bodies but used in shadow mode only:
+- [x] resolve NodeRef per request: declared headers first (Claude Code, Codex)
+- [x] prefix digest computed from request bodies but used in shadow mode only:
       logged, compared against declared identity, never yet authoritative
-- [ ] arena updated on request begin/finish; tree visible in debug logs
+- [x] arena updated on request begin/finish; tree visible in debug logs
 Gate: a session with subagents produces a correct tree (subagents attached to the
 right parent), verified against the transcript on disk.
 

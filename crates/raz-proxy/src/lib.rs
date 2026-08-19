@@ -4,6 +4,8 @@
 #![forbid(unsafe_code)]
 
 mod hop;
+mod identity;
+mod observe;
 mod proxy;
 mod serve;
 mod tee;
@@ -107,7 +109,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::proxy::Meter;
+    use crate::proxy::{Meter, ShadowCmp};
     use bytes::Bytes;
     use http_body_util::{BodyExt, Full};
     use hyper::body::Incoming;
@@ -233,7 +235,8 @@ mod tests {
         oneshot::Sender<()>,
         tokio::task::JoinHandle<()>,
     ) {
-        spawn_proxy_cfg(upstream, |p| p).await
+        let (addr, tx, handle, _) = spawn_proxy_cfg(upstream, |p| p).await;
+        (addr, tx, handle)
     }
 
     async fn spawn_proxy_cfg(
@@ -243,20 +246,22 @@ mod tests {
         std::net::SocketAddr,
         oneshot::Sender<()>,
         tokio::task::JoinHandle<()>,
+        Proxy,
     ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let uri: Uri = format!("http://{upstream}").parse().unwrap();
         let proxy = configure(Proxy::new(uri).unwrap());
+        let serving = proxy.clone();
         let (tx, rx) = oneshot::channel();
         let handle = tokio::spawn(async move {
-            serve(listener, proxy, async {
+            serve(listener, serving, async {
                 let _ = rx.await;
             })
             .await
             .unwrap();
         });
-        (addr, tx, handle)
+        (addr, tx, handle, proxy)
     }
 
     async fn send(
@@ -659,7 +664,7 @@ mod tests {
         let send_rest = Arc::new(Notify::new());
         let stub = sse_stub(first_sent.clone(), send_rest.clone()).await;
         let frames = Arc::new(Mutex::new(0usize));
-        let (proxy_addr, shutdown, handle) = spawn_proxy_cfg(stub, {
+        let (proxy_addr, shutdown, handle, _) = spawn_proxy_cfg(stub, {
             let frames = frames.clone();
             move |p| p.with_meter(Meter::Count(frames))
         })
@@ -691,7 +696,7 @@ mod tests {
         let first_sent = Arc::new(Notify::new());
         let send_rest = Arc::new(Notify::new());
         let stub = sse_stub(first_sent.clone(), send_rest.clone()).await;
-        let (proxy_addr, shutdown, handle) =
+        let (proxy_addr, shutdown, handle, _) =
             spawn_proxy_cfg(stub, |p| p.with_meter(Meter::KillAfter(1))).await;
 
         let client = Client::builder(TokioExecutor::new()).build_http();
@@ -724,6 +729,196 @@ mod tests {
         let mut expected = Vec::from(SSE_DELTA);
         expected.extend_from_slice(SSE_END);
         assert_eq!(rest.as_ref(), expected);
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    fn claude_headers(session: &str, agent: Option<&str>, parent: Option<&str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(
+            "x-claude-code-session-id",
+            HeaderValue::from_str(session).unwrap(),
+        );
+        if let Some(a) = agent {
+            h.insert("x-claude-code-agent-id", HeaderValue::from_str(a).unwrap());
+        }
+        if let Some(p) = parent {
+            h.insert(
+                "x-claude-code-parent-agent-id",
+                HeaderValue::from_str(p).unwrap(),
+            );
+        }
+        h
+    }
+
+    fn tree_walk(proxy: &Proxy, root: &str) -> Vec<(String, u8)> {
+        let arena = proxy.arena().lock().unwrap();
+        arena
+            .get(root)
+            .map(|t| {
+                t.walk()
+                    .into_iter()
+                    .map(|(id, d)| (id.to_string(), d))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn tree_children(proxy: &Proxy, root: &str, id: &str) -> Vec<String> {
+        let arena = proxy.arena().lock().unwrap();
+        arena
+            .get(root)
+            .map(|t| t.children_of(id).into_iter().map(str::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    async fn wait_shadow(notes: &Arc<Mutex<Vec<ShadowCmp>>>, n: usize) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if notes.lock().unwrap().len() >= n {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("shadow digest should run");
+    }
+
+    #[tokio::test]
+    async fn declared_headers_build_a_subagent_tree() {
+        let stub =
+            spawn_http_server(
+                |_req| async move { Response::new(Full::new(Bytes::from_static(b"{}"))) },
+            )
+            .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(br#"{"messages":[{"role":"user","content":"hi"}]}"#),
+        )
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", Some("agent-7"), None),
+            Bytes::from_static(br#"{"messages":[{"role":"user","content":"sub"}]}"#),
+        )
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", Some("agent-9"), Some("agent-7")),
+            Bytes::from_static(br#"{"messages":[{"role":"user","content":"nested"}]}"#),
+        )
+        .await;
+
+        assert_eq!(
+            tree_walk(&proxy, "sess-1"),
+            vec![
+                ("sess-1".into(), 0),
+                ("agent-7".into(), 1),
+                ("agent-9".into(), 2),
+            ]
+        );
+        assert_eq!(tree_children(&proxy, "sess-1", "sess-1"), vec!["agent-7"]);
+        assert_eq!(tree_children(&proxy, "sess-1", "agent-7"), vec!["agent-9"]);
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn prefix_digest_does_not_merge_live_sessions() {
+        let stub =
+            spawn_http_server(
+                |_req| async move { Response::new(Full::new(Bytes::from_static(b"{}"))) },
+            )
+            .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+
+        let shared = Bytes::from_static(
+            br#"{"messages":[{"role":"user","content":"sys"},{"role":"user","content":"hello"}]}"#,
+        );
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            HeaderMap::new(),
+            shared.clone(),
+        )
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            HeaderMap::new(),
+            shared,
+        )
+        .await;
+
+        assert_eq!(
+            proxy.arena().lock().unwrap().len(),
+            2,
+            "shadow digest must not attach live nodes"
+        );
+
+        wait_shadow(proxy.shadow_notes(), 2).await;
+        let notes = proxy.shadow_notes().lock().unwrap().clone();
+        assert!(notes.iter().all(|n| !n.declared));
+        assert!(notes.iter().all(|n| n.had_digest));
+        assert_eq!(
+            notes[0].shadow_root, notes[1].shadow_root,
+            "shadow index would have merged; live must not"
+        );
+        assert_ne!(notes[0].live_root, notes[1].live_root);
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn shadow_digest_compared_against_declared_identity() {
+        let stub =
+            spawn_http_server(
+                |_req| async move { Response::new(Full::new(Bytes::from_static(b"{}"))) },
+            )
+            .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(
+                br#"{"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"}]}"#,
+            ),
+        )
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(
+                br#"{"messages":[{"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}]}"#,
+            ),
+        )
+        .await;
+
+        wait_shadow(proxy.shadow_notes(), 2).await;
+        let notes = proxy.shadow_notes().lock().unwrap().clone();
+        assert!(notes.iter().all(|n| n.declared && n.had_digest));
+        assert!(notes.iter().all(|n| n.live_root == "sess-1"));
+        assert_eq!(tree_walk(&proxy, "sess-1")[0].0, "sess-1");
 
         shutdown.send(()).ok();
         handle.await.unwrap();

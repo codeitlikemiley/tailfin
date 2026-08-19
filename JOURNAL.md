@@ -5,3 +5,4 @@
 2026-08-19 21:12 — M2 — SSE unbuffered + TeeBody (try_send, never backpressures) + kill-the-meter; HTTPS via rustls for Anthropic; 61 tests — next: REAL-AGENT GATE (needs you)
 2026-08-19 21:14 — docs — filed docs/endgame.md + docs/positioning.md; CLAUDE.md north star; post-v0.1 re-sequenced M8–M12; M5 capture-schema checkbox reserved — next: M2 REAL-AGENT GATE (unchanged)
 2026-08-19 21:27 — M2 — real-agent gate: Claude Code 2.1.235 through 127.0.0.1:7171; streaming + tools + Explore subagent (Haiku 4.5) on docs/endgame.md; no visible behaviour change — next: M3 identity wiring
+2026-08-19 21:32 — M3 — raz-ident+arena wired; live path is declared headers or anonymous; prefix digest shadow-only (does not merge); 67 tests — next: restart proxy, one subagent session, compare `raz: tree` logs to the transcript

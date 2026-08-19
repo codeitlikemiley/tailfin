@@ -12,5 +12,9 @@ hyper = { version = "1", features = ["http1", "server", "client"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "ring", "native-tokio", "tls12", "rustls-native-certs"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "server-graceful", "tokio", "service"] }
 pin-project-lite = "0.2"
+raz-ident = { path = "../raz-ident" }
+raz-tree = { path = "../raz-tree" }
+raz-wire = { path = "../raz-wire" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+serde_json = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "io-util", "time", "sync"] }

@@ -292,7 +292,11 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "pin-project-lite",
+ "raz-ident",
+ "raz-tree",
+ "raz-wire",
  "rustls",
+ "serde_json",
  "tokio",
 ]
 
