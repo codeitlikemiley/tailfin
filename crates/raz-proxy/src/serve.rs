@@ -26,7 +26,7 @@ pub async fn serve(
                 let (stream, _) = match result {
                     Ok(s) => s,
                     Err(e) => {
-                        eprintln!("raz: accept error: {e}");
+                        crate::log::log(format!("raz: accept error: {e}"));
                         continue;
                     }
                 };
@@ -42,7 +42,14 @@ pub async fn serve(
                 let fut = graceful.watch(conn);
                 tokio::spawn(async move {
                     if let Err(e) = fut.await {
-                        eprintln!("raz: connection error: {e}");
+                        let msg = e.to_string();
+                        // Client abort after the stream is done is normal.
+                        if msg.contains("before message completed")
+                            || msg.contains("connection reset")
+                        {
+                            return;
+                        }
+                        crate::log::log(format!("raz: connection error: {e}"));
                     }
                 });
             }

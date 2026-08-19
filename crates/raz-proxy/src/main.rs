@@ -26,10 +26,12 @@ async fn run() -> Result<(), Error> {
         std::env::var("RAZ_LISTEN").ok().as_deref(),
         std::env::var("RAZ_UPSTREAM").ok().as_deref(),
     )?;
+    raz_proxy::init_log();
     let proxy = Proxy::new(cfg.upstream.clone())?;
     let listener = TcpListener::bind(cfg.listen).await?;
     let bound = listener.local_addr()?;
     eprintln!("raz listening on http://{bound} → {}", cfg.upstream);
+    let _ = std::io::Write::flush(&mut std::io::stderr());
     serve(listener, proxy, shutdown_signal()).await
 }
 

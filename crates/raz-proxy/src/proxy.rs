@@ -114,13 +114,17 @@ impl Proxy {
         match self.relay_inner(req).await {
             Ok(resp) => resp,
             Err(err) => {
-                eprintln!("raz: upstream error: {err}");
+                crate::log::log(format!("raz: upstream error: {err}"));
                 gateway_error()
             }
         }
     }
 
     async fn relay_inner(&self, req: Request<Incoming>) -> Result<Response<RelayBody>, BoxError> {
+        // Claude Code probes the configured base URL. Do not forward this to Anthropic.
+        if req.uri().path() == "/api/hello" {
+            return Ok(hello_ok());
+        }
         let (mut parts, body) = req.into_parts();
         // Digest is passed as None: live identity is declared headers or
         // anonymous. Prefix matching stays shadow until M8.
@@ -132,7 +136,7 @@ impl Proxy {
         {
             let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
             arena.task_mut(&node.root).begin(&node, None);
-            eprintln!(
+            crate::log::log(format!(
                 "raz: begin root={} node={} parent={:?} declared={} conf={:.2} path={}",
                 node.root,
                 node.node,
@@ -140,7 +144,7 @@ impl Proxy {
                 node.source.is_declared(),
                 node.source.confidence(),
                 parts.uri.path()
-            );
+            ));
         }
 
         // Unknown paths still get the Anthropic meter: Claude Code has used
@@ -209,14 +213,14 @@ impl Proxy {
                 declared: live.source.is_declared(),
                 had_digest: digest.is_some(),
             };
-            eprintln!(
+            crate::log::log(format!(
                 "raz: shadow live_root={} shadow_root={} declared={} digest={} conf={:.2}",
                 cmp.live_root,
                 cmp.shadow_root,
                 cmp.declared,
                 cmp.had_digest,
                 shadow_node.source.confidence()
-            );
+            ));
             let mut notes = notes.lock().unwrap_or_else(|e| e.into_inner());
             notes.push(cmp);
             let extra = notes.len().saturating_sub(64);
@@ -260,10 +264,10 @@ impl Proxy {
                 None => (Usage::default(), false),
             };
             if frames > 0 {
-                eprintln!(
+                crate::log::log(format!(
                     "raz: teed {frames} frames / {bytes} bytes in={} out={} cache_read={} cache_5m={} cache_1h={} complete={complete}",
                     usage.input, usage.output, usage.cache_read, usage.cache_write_5m, usage.cache_write_1h
-                );
+                ));
             }
             finish_locked(&arena, &node, &usage, complete);
         });
@@ -279,7 +283,7 @@ fn finish_locked(arena: &Mutex<Arena>, node: &raz_ident::NodeRef, usage: &Usage,
             .into_iter()
             .map(|(id, depth)| format!("{id}:{depth}"))
             .collect();
-        eprintln!("raz: tree {} [{}]", node.root, walk.join(" "));
+        crate::log::log(format!("raz: tree {} [{}]", node.root, walk.join(" ")));
     }
 }
 
@@ -316,6 +320,20 @@ fn rewrite_uri(upstream: &Uri, req_uri: &Uri) -> Result<Uri, BoxError> {
             .unwrap_or_else(|| PathAndQuery::from_static("/")),
     );
     Ok(Uri::from_parts(parts)?)
+}
+
+fn hello_ok() -> Response<RelayBody> {
+    let mut resp = Response::new(
+        Full::new(Bytes::from_static(br#"{"status":"ok"}"#))
+            .map_err(|never: Infallible| -> BoxError { match never {} })
+            .boxed(),
+    );
+    *resp.status_mut() = StatusCode::OK;
+    resp.headers_mut().insert(
+        hyper::header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    resp
 }
 
 fn gateway_error() -> Response<RelayBody> {

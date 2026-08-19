@@ -5,11 +5,13 @@
 
 mod hop;
 mod identity;
+mod log;
 mod proxy;
 mod serve;
 mod tee;
 
 pub use hop::strip_hop_by_hop;
+pub use log::init as init_log;
 pub use proxy::{Proxy, RelayBody};
 pub use serve::serve;
 
@@ -1124,5 +1126,35 @@ mod tests {
             got.get("accept-encoding").is_none(),
             "gzip would hide SSE from the tee"
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn api_hello_is_answered_locally_not_forwarded() {
+        let seen: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+        let stub = spawn_http_server({
+            let seen = seen.clone();
+            move |_req| {
+                let seen = seen.clone();
+                async move {
+                    *seen.lock().unwrap() += 1;
+                    Response::new(Full::new(Bytes::from_static(b"nope")))
+                }
+            }
+        })
+        .await;
+        let (proxy_addr, shutdown, handle) = spawn_proxy(stub).await;
+        let got = send(
+            proxy_addr,
+            Method::GET,
+            "/api/hello",
+            HeaderMap::new(),
+            Bytes::new(),
+        )
+        .await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        assert_eq!(got.status, StatusCode::OK);
+        assert_eq!(got.body.as_ref(), br#"{"status":"ok"}"#);
+        assert_eq!(*seen.lock().unwrap(), 0, "must not hit upstream");
     }
 }
