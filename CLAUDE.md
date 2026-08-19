@@ -101,3 +101,29 @@ synthetic text unmistakably because it persists in history and prompt cache.
 - Real-agent verification (from M2 on): run a session of Claude Code through the proxy
   with `ANTHROPIC_BASE_URL=http://localhost:7171` and confirm normal behaviour plus
   correct ledger output. This is the gate that matters more than unit tests.
+
+## North star (docs/endgame.md) — design consequences only
+
+The endgame ladder: the task boundary makes work **visible** (v0.1), **comparable**
+(replay), **conserved** (vouchers), **attributable** (stamps), and eventually
+**priceable** (actuarial — parked). Read docs/endgame.md once, then treat it as
+follows: it changes DESIGN DECISIONS now; it never changes the current milestone's
+scope.
+
+1. **Ledger schema is versioned and capture-capable.** Every record carries a
+   `schema_version` and a task id stable across process restarts. Full request-body
+   capture is an opt-in flag (`--capture`), local-only, with a retention knob.
+   Retrofitting capture after the schema ships is surgery; carrying the fields now
+   is free.
+2. **Admission is per-node, not just per-root.** The arena keeps an allowance field
+   on nodes, defaulting to "inherit from root," so vouchers (M9) become bookkeeping
+   rather than a refactor of the admission path.
+3. **No telemetry, ever, in this codebase.** Captured data never leaves the machine.
+   The endgame's final level lives or dies on trust, and trust dies on exactly one
+   exception — so there are none, including "anonymous usage stats."
+4. **Records preserve enough structure to compute "task shape" later** — message
+   count, tool-call mix, token histogram, fan-out — without ever re-reading bodies.
+   Shape from metadata, never from content.
+5. **The endgame is not a license for scope creep.** If a change serves the endgame
+   but is not on the current milestone, it becomes a ROADMAP line under the right
+   milestone — never code today.
