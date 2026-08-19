@@ -41,13 +41,13 @@ right parent), verified against the transcript on disk.
 Gate: the cross-check on a real session.
 
 ## M5 — ledger + report (raz-ledger, raz-cli)
-- [ ] append-only JSONL ledger: one record per request finish, includes NodeRef,
+- [x] append-only JSONL ledger: one record per request finish, includes NodeRef,
       usage, confidence, incomplete flag
-- [ ] `raz run` (foreground proxy) and `raz report` (reads ledger)
-- [ ] report prints: total, main vs subagent split, fan-out multiplier, per-node
+- [x] `raz run` (foreground proxy) and `raz report` (reads ledger)
+- [x] report prints: total, main vs subagent split, fan-out multiplier, per-node
       table ranked by cost, peak concurrency, cache read:write ratio, incomplete count
-- [ ] rate card loaded from a TOML file; missing card = token-only report, no dollars
-- [ ] ledger records carry schema_version + stable task id; --capture flag
+- [x] rate card loaded from a TOML file; missing card = token-only report, no dollars
+- [x] ledger records carry schema_version + stable task id; --capture flag
       reserved (parses, prints "capture lands in M8", stores nothing)
 Gate: `raz report` on a real fan-out session prints the table and the numbers
 reconcile with M4's cross-check.

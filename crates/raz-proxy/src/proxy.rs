@@ -56,6 +56,7 @@ pub struct Proxy {
     shadow: Arc<Mutex<SessionIndex>>,
     arena: Arc<Mutex<Arena>>,
     shadow_notes: Arc<Mutex<Vec<ShadowCmp>>>,
+    ledger: Option<Arc<raz_ledger::Ledger>>,
 }
 
 impl Proxy {
@@ -85,7 +86,13 @@ impl Proxy {
             shadow: Arc::new(Mutex::new(SessionIndex::new())),
             arena: Arc::new(Mutex::new(Arena::new())),
             shadow_notes: Arc::new(Mutex::new(Vec::new())),
+            ledger: None,
         })
+    }
+
+    pub fn with_ledger(mut self, ledger: Arc<raz_ledger::Ledger>) -> Self {
+        self.ledger = Some(ledger);
+        self
     }
 
     #[cfg(test)]
@@ -190,7 +197,7 @@ impl Proxy {
     }
 
     fn finish_node(&self, node: &raz_ident::NodeRef, complete: bool) {
-        finish_locked(&self.arena, node, &Usage::default(), complete);
+        finish_locked(&self.arena, node, &Usage::default(), complete, &self.ledger);
     }
 
     fn spawn_shadow(
@@ -241,6 +248,7 @@ impl Proxy {
         node: raz_ident::NodeRef,
     ) {
         let arena = self.arena.clone();
+        let ledger = self.ledger.clone();
         #[cfg(test)]
         let kind = self.meter.clone();
         tokio::spawn(async move {
@@ -273,14 +281,24 @@ impl Proxy {
                     usage.input, usage.output, usage.cache_read, usage.cache_write_5m, usage.cache_write_1h
                 ));
             }
-            finish_locked(&arena, &node, &usage, complete);
+            finish_locked(&arena, &node, &usage, complete, &ledger);
         });
     }
 }
 
-fn finish_locked(arena: &Mutex<Arena>, node: &raz_ident::NodeRef, usage: &Usage, complete: bool) {
+fn finish_locked(
+    arena: &Mutex<Arena>,
+    node: &raz_ident::NodeRef,
+    usage: &Usage,
+    complete: bool,
+    ledger: &Option<Arc<raz_ledger::Ledger>>,
+) {
     let mut arena = arena.lock().unwrap_or_else(|e| e.into_inner());
     arena.task_mut(&node.root).finish(node, usage, complete);
+    let peak = arena
+        .get(&node.root)
+        .map(|t| t.peak_concurrency())
+        .unwrap_or(0);
     if let Some(task) = arena.get(&node.root) {
         let walk: Vec<_> = task
             .walk()
@@ -288,6 +306,12 @@ fn finish_locked(arena: &Mutex<Arena>, node: &raz_ident::NodeRef, usage: &Usage,
             .map(|(id, depth)| format!("{id}:{depth}"))
             .collect();
         crate::log::log(format!("raz: tree {} [{}]", node.root, walk.join(" ")));
+    }
+    if let Some(led) = ledger {
+        let rec = raz_ledger::Record::from_finish(node, usage, !complete, peak);
+        if let Err(e) = led.append(&rec) {
+            crate::log::log(format!("raz: ledger write: {e}"));
+        }
     }
 }
 

@@ -13,6 +13,7 @@ hyper-rustls = { version = "0.27", default-features = false, features = ["http1"
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "server-graceful", "tokio", "service"] }
 pin-project-lite = "0.2"
 raz-ident = { path = "../raz-ident" }
+raz-ledger = { path = "../raz-ledger" }
 raz-tree = { path = "../raz-tree" }
 raz-wire = { path = "../raz-wire" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }

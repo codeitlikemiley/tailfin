@@ -1,0 +1,19 @@
+[package]
+name = "raz-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "raz run and raz report"
+
+[[bin]]
+name = "raz"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+serde = { workspace = true }
+raz-ledger = { path = "../raz-ledger" }
+raz-proxy = { path = "../raz-proxy" }
+raz-wire = { path = "../raz-wire" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+toml = "0.8"

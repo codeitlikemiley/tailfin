@@ -1,0 +1,13 @@
+[package]
+name = "raz-ledger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Append-only JSONL ledger for per-request observation"
+
+[dependencies]
+raz-ident = { path = "../raz-ident" }
+raz-tree = { path = "../raz-tree" }
+raz-wire = { path = "../raz-wire" }
+serde = { workspace = true }
+serde_json = { workspace = true }

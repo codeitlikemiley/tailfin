@@ -121,6 +121,7 @@ mod tests {
     use hyper::{Method, Request, Response, StatusCode};
     use hyper_util::client::legacy::Client;
     use hyper_util::rt::{TokioExecutor, TokioIo};
+    use raz_ledger::Ledger;
     use raz_wire::Usage;
     use std::convert::Infallible;
     use std::pin::Pin;
@@ -1156,5 +1157,44 @@ mod tests {
         assert_eq!(got.status, StatusCode::OK);
         assert_eq!(got.body.as_ref(), br#"{"status":"ok"}"#);
         assert_eq!(*seen.lock().unwrap(), 0, "must not hit upstream");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn finish_appends_a_schema_versioned_ledger_record() {
+        let path =
+            std::env::temp_dir().join(format!("raz-proxy-led-{}-.jsonl", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                .unwrap()
+        })
+        .await;
+        let led_path = path.clone();
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, move |p| {
+            p.with_ledger(Arc::new(Ledger::open(&led_path).unwrap()))
+        })
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        wait_usage(&proxy, "sess-1", |u, _| u.output == 250).await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        // meter task writes after the body drops; give it a beat
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let recs = Ledger::read_all(&path).unwrap();
+        assert!(!recs.is_empty(), "ledger should have a row");
+        assert_eq!(recs[0].schema_version, 1);
+        assert_eq!(recs[0].task_id, "sess-1");
+        assert_eq!(recs[0].output, 250);
+        assert!(!recs[0].incomplete);
+        let _ = std::fs::remove_file(&path);
     }
 }

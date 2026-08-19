@@ -194,10 +194,15 @@ pub fn from_headers<H: Headers>(h: &H) -> Option<IdentitySource> {
 /// Extract the three fields we need from Codex's turn-metadata blob without
 /// pulling in a JSON dependency: this runs on every request.
 fn parse_codex_metadata(raw: &str) -> Option<IdentitySource> {
-    let root = scrape_json_string(raw, "root_turn_id").or_else(|| scrape_json_string(raw, "session_id"))?;
+    let root = scrape_json_string(raw, "root_turn_id")
+        .or_else(|| scrape_json_string(raw, "session_id"))?;
     let turn = scrape_json_string(raw, "turn_id");
     let parent = scrape_json_string(raw, "parent_turn_id");
-    Some(IdentitySource::Declared { session: root, node: turn, parent })
+    Some(IdentitySource::Declared {
+        session: root,
+        node: turn,
+        parent,
+    })
 }
 
 /// Pull `"key":"value"` out of flat JSON. Deliberately not a parser — it must
@@ -248,7 +253,11 @@ struct Live {
 
 impl SessionIndex {
     pub fn new() -> Self {
-        Self { live: Vec::new(), min_level_idx: 1, next: 0 }
+        Self {
+            live: Vec::new(),
+            min_level_idx: 1,
+            next: 0,
+        }
     }
 
     /// Require a deeper shared prefix before joining. Raise this when many
@@ -262,9 +271,11 @@ impl SessionIndex {
     pub fn resolve<H: Headers>(&mut self, headers: &H, digest: Option<PrefixDigest>) -> NodeRef {
         if let Some(src @ IdentitySource::Declared { .. }) = from_headers(headers) {
             let (session, node, parent) = match &src {
-                IdentitySource::Declared { session, node, parent } => {
-                    (session.clone(), node.clone(), parent.clone())
-                }
+                IdentitySource::Declared {
+                    session,
+                    node,
+                    parent,
+                } => (session.clone(), node.clone(), parent.clone()),
                 _ => unreachable!(),
             };
             return NodeRef {
@@ -302,13 +313,19 @@ impl SessionIndex {
                     node: root.clone(),
                     parent: None,
                     root,
-                    source: IdentitySource::Inferred { shared_depth: shared },
+                    source: IdentitySource::Inferred {
+                        shared_depth: shared,
+                    },
                 }
             }
             None => {
                 self.next += 1;
                 let root = format!("inferred-{:06}", self.next);
-                self.live.push(Live { root: root.clone(), digest: d, depth_seen: 0 });
+                self.live.push(Live {
+                    root: root.clone(),
+                    digest: d,
+                    depth_seen: 0,
+                });
                 NodeRef {
                     node: root.clone(),
                     parent: None,
@@ -322,7 +339,12 @@ impl SessionIndex {
     fn anonymous(&mut self) -> NodeRef {
         self.next += 1;
         let root = format!("anon-{:06}", self.next);
-        NodeRef { node: root.clone(), parent: None, root, source: IdentitySource::Anonymous }
+        NodeRef {
+            node: root.clone(),
+            parent: None,
+            root,
+            source: IdentitySource::Anonymous,
+        }
     }
 
     pub fn live_sessions(&self) -> usize {
@@ -415,7 +437,10 @@ mod tests {
         let mut h = HashMap::new();
         h.insert("x-claude-code-session-id".into(), "sess-1".to_string());
         h.insert("x-claude-code-agent-id".into(), "agent-9".to_string());
-        h.insert("x-claude-code-parent-agent-id".into(), "agent-4".to_string());
+        h.insert(
+            "x-claude-code-parent-agent-id".into(),
+            "agent-4".to_string(),
+        );
         let mut idx = SessionIndex::new();
         let n = idx.resolve(&h, None);
         assert_eq!(n.parent.as_deref(), Some("agent-4"));
@@ -439,14 +464,23 @@ mod tests {
     #[test]
     fn codex_metadata_falls_back_to_session_when_no_root() {
         let mut h = HashMap::new();
-        h.insert("x-codex-turn-metadata".into(), r#"{"session_id":"s-1"}"#.to_string());
+        h.insert(
+            "x-codex-turn-metadata".into(),
+            r#"{"session_id":"s-1"}"#.to_string(),
+        );
         let mut idx = SessionIndex::new();
         assert_eq!(idx.resolve(&h, None).root, "s-1");
     }
 
     #[test]
     fn malformed_codex_metadata_does_not_panic() {
-        for bad in [r#"{"root_turn_id":"#, "{", "", "not json", r#"{"root_turn_id":null}"#] {
+        for bad in [
+            r#"{"root_turn_id":"#,
+            "{",
+            "",
+            "not json",
+            r#"{"root_turn_id":null}"#,
+        ] {
             let mut h = HashMap::new();
             h.insert("x-codex-turn-metadata".into(), bad.to_string());
             let mut idx = SessionIndex::new();
@@ -467,7 +501,10 @@ mod tests {
         let turn7 = PrefixDigest::from_messages(&msgs(7));
         let second = idx.resolve(&h, Some(turn7));
 
-        assert_eq!(first.root, second.root, "continuation should join its session");
+        assert_eq!(
+            first.root, second.root,
+            "continuation should join its session"
+        );
         assert_eq!(idx.live_sessions(), 1);
     }
 
@@ -488,15 +525,36 @@ mod tests {
         // Both start with the same system message and diverge immediately.
         let mut idx = SessionIndex::new();
         let h: HashMap<String, String> = HashMap::new();
-        idx.resolve(&h, Some(PrefixDigest::from_messages(&["sys".to_string(), "a".to_string()])));
-        idx.resolve(&h, Some(PrefixDigest::from_messages(&["sys".to_string(), "b".to_string()])));
-        assert_eq!(idx.live_sessions(), 2, "depth-1 agreement must not be enough");
+        idx.resolve(
+            &h,
+            Some(PrefixDigest::from_messages(&[
+                "sys".to_string(),
+                "a".to_string(),
+            ])),
+        );
+        idx.resolve(
+            &h,
+            Some(PrefixDigest::from_messages(&[
+                "sys".to_string(),
+                "b".to_string(),
+            ])),
+        );
+        assert_eq!(
+            idx.live_sessions(),
+            2,
+            "depth-1 agreement must not be enough"
+        );
     }
 
     #[test]
     fn confidence_reflects_the_evidence() {
         assert_eq!(
-            IdentitySource::Declared { session: "s".into(), node: None, parent: None }.confidence(),
+            IdentitySource::Declared {
+                session: "s".into(),
+                node: None,
+                parent: None
+            }
+            .confidence(),
             1.0
         );
         assert_eq!(IdentitySource::Anonymous.confidence(), 0.0);

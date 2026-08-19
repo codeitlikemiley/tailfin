@@ -28,7 +28,10 @@ pub enum Admission {
     /// claiming a hard ceiling without this caveat is not measuring.
     Last,
     /// The task is already sealed. Stop it.
-    Deny { spent_micros: u64, ceiling_micros: u64 },
+    Deny {
+        spent_micros: u64,
+        ceiling_micros: u64,
+    },
 }
 
 /// How a sealed task should be stopped.
@@ -155,10 +158,15 @@ impl Task {
 
     /// Decide whether a new request may proceed.
     pub fn admit(&mut self, rates: &RateCard) -> Admission {
-        let Some(ceiling) = self.ceiling_micros else { return Admission::Allow };
+        let Some(ceiling) = self.ceiling_micros else {
+            return Admission::Allow;
+        };
         let spent = self.spent_micros(rates);
         if self.sealed {
-            return Admission::Deny { spent_micros: spent, ceiling_micros: ceiling };
+            return Admission::Deny {
+                spent_micros: spent,
+                ceiling_micros: ceiling,
+            };
         }
         if spent >= ceiling {
             self.sealed = true;
@@ -184,7 +192,10 @@ impl Task {
     }
 
     pub fn root_usage(&self) -> Usage {
-        self.nodes.get(&self.root).map(|n| n.usage).unwrap_or_default()
+        self.nodes
+            .get(&self.root)
+            .map(|n| n.usage)
+            .unwrap_or_default()
     }
 
     /// Usage of everything that is not the root — the work the user never saw.
@@ -368,7 +379,10 @@ mod tests {
     }
 
     fn out(n: u64) -> Usage {
-        Usage { output: n, ..Default::default() }
+        Usage {
+            output: n,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -405,7 +419,9 @@ mod tests {
     #[test]
     fn peak_concurrency_sees_the_burst() {
         let mut t = Task::new("s1");
-        let subs: Vec<_> = (0..5).map(|i| node("s1", &format!("a{i}"), Some("s1"))).collect();
+        let subs: Vec<_> = (0..5)
+            .map(|i| node("s1", &format!("a{i}"), Some("s1")))
+            .collect();
         for s in &subs {
             t.begin(s, None);
         }
@@ -444,10 +460,17 @@ mod tests {
         t.begin(&r, None);
         t.finish(&r, &out(10_000), true); // 1_500_000 total
 
-        assert_eq!(t.admit(&rates()), Admission::Last, "crossing seals the task");
+        assert_eq!(
+            t.admit(&rates()),
+            Admission::Last,
+            "crossing seals the task"
+        );
         assert!(t.is_sealed());
         match t.admit(&rates()) {
-            Admission::Deny { spent_micros, ceiling_micros } => {
+            Admission::Deny {
+                spent_micros,
+                ceiling_micros,
+            } => {
                 assert_eq!(ceiling_micros, 1_000_000);
                 assert!(spent_micros >= 1_500_000);
             }
@@ -469,7 +492,9 @@ mod tests {
         // Five in flight when the ceiling trips: at most five requests land
         // past it. This is the honest bound, and it must be stated.
         let mut t = Task::new("s1").with_ceiling_micros(100_000);
-        let subs: Vec<_> = (0..5).map(|i| node("s1", &format!("a{i}"), Some("s1"))).collect();
+        let subs: Vec<_> = (0..5)
+            .map(|i| node("s1", &format!("a{i}"), Some("s1")))
+            .collect();
         for s in &subs {
             assert_eq!(t.admit(&rates()), Admission::Allow);
             t.begin(s, None);
@@ -551,7 +576,11 @@ mod tests {
         t.begin(&r, None);
         t.finish(
             &r,
-            &Usage { cache_read: 1_000_000, cache_write_1h: 1_000_000, ..Default::default() },
+            &Usage {
+                cache_read: 1_000_000,
+                cache_write_1h: 1_000_000,
+                ..Default::default()
+            },
             true,
         );
         let u = t.total_usage();
