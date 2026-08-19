@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 
 mod capture;
+mod doctor;
 mod replay;
 mod stamp;
 
@@ -10,6 +11,7 @@ pub use capture::{
     body_meta, default_capture_dir, parse_retention, CaptureRecord, CaptureStore, CAPTURE_SCHEMA,
     DEFAULT_RETENTION,
 };
+pub use doctor::{diagnose, render_doctor, Finding};
 pub use replay::{
     render_table, replay, sample_captures, score_output, BatchSink, ReplayOpts, ReplayOutput,
     ReplayRow, Score, StubBatch,

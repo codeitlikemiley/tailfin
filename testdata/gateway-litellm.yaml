@@ -1,0 +1,11 @@
+# Fixture for `raz doctor`. Not a production file.
+router_settings:
+  fallbacks:
+    - gpt-4: [gpt-3.5-turbo]
+general_settings:
+  context_compression: true
+  compression_ratio: 0.1
+  memory_plugin:
+    inject: true
+  compression:
+    strip: true

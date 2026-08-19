@@ -29,6 +29,8 @@ enum Cmd {
     Stamp(StampArgs),
     /// Per-node cost as hunk-shaped rows.
     Blame(BlameArgs),
+    /// Report collisions in a LiteLLM/gateway config.
+    Doctor(DoctorArgs),
 }
 
 #[derive(clap::Args)]
@@ -98,6 +100,12 @@ struct BlameArgs {
 }
 
 #[derive(clap::Args)]
+struct DoctorArgs {
+    /// Path to a LiteLLM / gateway config (YAML/TOML/JSON text).
+    config: PathBuf,
+}
+
+#[derive(clap::Args)]
 struct ReportArgs {
     #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
     ledger: PathBuf,
@@ -133,6 +141,10 @@ async fn go() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
         Cmd::Blame(args) => {
             blame_cmd(args)?;
+            Ok(())
+        }
+        Cmd::Doctor(args) => {
+            doctor_cmd(args)?;
             Ok(())
         }
     }
@@ -274,6 +286,12 @@ fn blame_cmd(args: BlameArgs) -> Result<(), Box<dyn std::error::Error + Send + S
     Ok(())
 }
 
+fn doctor_cmd(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let raw = std::fs::read_to_string(&args.config)?;
+    print!("{}", raz_ledger::render_doctor(&raz_ledger::diagnose(&raw)));
+    Ok(())
+}
+
 fn parse_share(s: &str) -> Result<f64, String> {
     let t = s.trim().trim_end_matches('%').trim();
     let v: f64 = t.parse().map_err(|_| format!("bad --subagent-share {s}"))?;
@@ -397,6 +415,15 @@ mod tests {
         assert!((parse_share("30%").unwrap() - 0.3).abs() < 1e-9);
         assert!((parse_share("0.3").unwrap() - 0.3).abs() < 1e-9);
         assert!((parse_share("30").unwrap() - 0.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn doctor_parses() {
+        let cli = Cli::try_parse_from(["raz", "doctor", "cfg.yaml"]).unwrap();
+        match cli.cmd {
+            Cmd::Doctor(a) => assert_eq!(a.config, PathBuf::from("cfg.yaml")),
+            _ => panic!("doctor"),
+        }
     }
 
     #[test]

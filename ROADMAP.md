@@ -116,11 +116,12 @@ Gate: BLOCKED: aider/opencode live session with zero declared headers not run he
 Gate: BLOCKED: a published PR with a stamp a reviewer understands — not produced here.
 
 ## M12 — doctor (conflict detector)
-- [ ] `raz doctor` reads a LiteLLM/gateway config and reports: budget-fallback chains
+- [x] `raz doctor` reads a LiteLLM/gateway config and reports: budget-fallback chains
       with no tier floor; compression ratios that evict prefixes from the persistent
       cache tier; memory-inject feeding compression-strip
-- [ ] every rule cites its published measurement in the output
-Gate: run against a real config from a public repo; findings are true on inspection.
+- [x] every rule cites its published measurement in the output
+Gate: BLOCKED: a production LiteLLM file from a public repo — fixture
+testdata/gateway-litellm.yaml is what we ran.
 
 ## Parked — endgame L5 (actuarial layer)
 Do not build. No telemetry or sharing code exists in this repository until raz is
