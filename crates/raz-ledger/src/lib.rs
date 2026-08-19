@@ -196,7 +196,7 @@ pub fn peak_for_task(records: &[Record], root: &str) -> u32 {
         .unwrap_or(0)
 }
 
-pub fn render(records: &[Record], rates: Option<&RateCard>) -> String {
+pub fn render(records: &[Record], rates: Option<&RateCard>, share: bool) -> String {
     if records.is_empty() {
         return "no records\n".into();
     }
@@ -205,14 +205,20 @@ pub fn render(records: &[Record], rates: Option<&RateCard>) -> String {
         out.push_str("no rate card; token counts only (no dollars)\n");
     }
     let tasks = tasks_from_records(records);
-    for task in &tasks {
-        out.push_str(&render_task(task, records, rates));
+    for (i, task) in tasks.iter().enumerate() {
+        out.push_str(&render_task(task, records, rates, share, i));
         out.push('\n');
     }
     out
 }
 
-fn render_task(task: &Task, records: &[Record], rates: Option<&RateCard>) -> String {
+fn render_task(
+    task: &Task,
+    records: &[Record],
+    rates: Option<&RateCard>,
+    share: bool,
+    index: usize,
+) -> String {
     let total = task.total_usage();
     let main = task.root_usage();
     let sub = task.subagent_usage();
@@ -220,38 +226,64 @@ fn render_task(task: &Task, records: &[Record], rates: Option<&RateCard>) -> Str
     let peak = peak_for_task(records, &task.root);
     let incomplete = task.incomplete_requests();
     let ratio = total.cache_read_write_ratio();
-    let mut s = format!("task {}\n", task.root);
-    s.push_str(&format!(
-        "  tokens    {}  (main {} / sub {})\n",
-        total.total(),
-        main.total(),
-        sub.total()
-    ));
+    let heading = if share {
+        format!("task {}\n", index + 1)
+    } else {
+        format!("task {}\n", task.root)
+    };
+    let mut s = heading;
+    if share {
+        s.push_str(&format!(
+            "  tokens    {}  (main {}, sub {})\n",
+            total.total(),
+            main.total(),
+            sub.total()
+        ));
+    } else {
+        s.push_str(&format!(
+            "  tokens    {}  (main {} / sub {})\n",
+            total.total(),
+            main.total(),
+            sub.total()
+        ));
+    }
     match fan {
         Some(f) => s.push_str(&format!("  fan-out   {f:.2}x\n")),
-        None => s.push_str("  fan-out   n/a\n"),
+        None => s.push_str(if share {
+            "  fan-out   none\n"
+        } else {
+            "  fan-out   n/a\n"
+        }),
     }
     if let Some(r) = rates {
         let dollars = task.spent_micros(r) as f64 / 1_000_000.0;
-        let share = task.subagent_share(r).unwrap_or(0.0);
+        let sub_share = task.subagent_share(r).unwrap_or(0.0);
         s.push_str(&format!(
             "  cost      ${dollars:.4}  (subagent share {:.0}%)\n",
-            share * 100.0
+            sub_share * 100.0
         ));
     }
     s.push_str(&format!("  peak conc {peak}\n"));
     s.push_str(&format!("  incomplete {incomplete}\n"));
     match ratio {
         Some(r) => s.push_str(&format!("  cache r:w {r:.2}\n")),
-        None => s.push_str("  cache r:w n/a\n"),
+        None => s.push_str(if share {
+            "  cache r:w none\n"
+        } else {
+            "  cache r:w n/a\n"
+        }),
     }
-    s.push_str("  node                             tokens");
+    if share {
+        s.push_str("  role                             tokens");
+    } else {
+        s.push_str("  node                             tokens");
+    }
     if rates.is_some() {
         s.push_str("        $");
     }
     s.push('\n');
 
-    let mut rows: Vec<_> = if let Some(r) = rates {
+    let rows: Vec<_> = if let Some(r) = rates {
         task.by_cost(r)
             .into_iter()
             .map(|n| (n.id, n.is_root, n.usage, Some(n.micros)))
@@ -269,17 +301,25 @@ fn render_task(task: &Task, records: &[Record], rates: Option<&RateCard>) -> Str
         v.sort_by(|a, b| b.2.total().cmp(&a.2.total()).then_with(|| a.0.cmp(&b.0)));
         v
     };
-    // by_cost already sorted; token path sorted above.
-    let _ = &mut rows;
+    let mut sub_n = 0u32;
     for (id, is_root, usage, micros) in rows {
-        let kind = if is_root { "main" } else { "sub " };
-        s.push_str(&format!(
-            "  {kind} {:<28} {:>7}",
-            trunc(&id, 28),
-            usage.total()
-        ));
-        if let (Some(r), Some(m)) = (rates, micros) {
-            let _ = r;
+        if share {
+            let label = if is_root {
+                "main".to_string()
+            } else {
+                sub_n += 1;
+                format!("sub {sub_n}")
+            };
+            s.push_str(&format!("  {label:<33} {:>7}", usage.total()));
+        } else {
+            let kind = if is_root { "main" } else { "sub " };
+            s.push_str(&format!(
+                "  {kind} {:<28} {:>7}",
+                trunc(&id, 28),
+                usage.total()
+            ));
+        }
+        if let (Some(_r), Some(m)) = (rates, micros) {
             s.push_str(&format!("  ${:.4}", m as f64 / 1_000_000.0));
         }
         s.push('\n');
@@ -375,7 +415,7 @@ mod tests {
             false,
             2,
         );
-        let text = render(&[rec, sub], None);
+        let text = render(&[rec, sub], None, false);
         assert!(text.contains("no rate card"));
         assert!(text.contains("fan-out"));
         assert!(text.contains("peak conc 2"));
@@ -406,7 +446,7 @@ mod tests {
             1,
         );
         let rates = RateCard::from_base(15_000_000, 75_000_000);
-        let text = render(&[rec, sub], Some(&rates));
+        let text = render(&[rec, sub], Some(&rates), false);
         assert!(text.contains('$'), "{text}");
         assert!(text.contains("subagent share 90%"), "{text}");
         assert!(!text.contains("no rate card"));
@@ -422,5 +462,97 @@ mod tests {
         let p = std::env::temp_dir().join("raz-does-not-exist-hopefully.jsonl");
         let _ = std::fs::remove_file(&p);
         assert!(Ledger::read_all(&p).unwrap().is_empty());
+    }
+
+    #[test]
+    fn share_mode_redacts_ids_and_paths() {
+        let rec = Record::from_finish(
+            &node(
+                "/Users/alice/secret-project",
+                "/Users/alice/secret-project",
+                None,
+            ),
+            &Usage {
+                output: 100,
+                ..Default::default()
+            },
+            false,
+            1,
+        );
+        let sub = Record::from_finish(
+            &node(
+                "/Users/alice/secret-project",
+                "a32f6f348523b0003",
+                Some("/Users/alice/secret-project"),
+            ),
+            &Usage {
+                output: 900,
+                ..Default::default()
+            },
+            false,
+            2,
+        );
+        let text = render(&[rec, sub], None, true);
+        assert!(!text.contains('/'), "no paths: {text}");
+        assert!(!text.contains("Users"), "{text}");
+        assert!(!text.contains("alice"), "{text}");
+        assert!(!text.contains("secret-project"), "{text}");
+        assert!(!text.contains("a32f6f348523b0003"), "{text}");
+        assert!(text.contains("task 1"), "{text}");
+        assert!(text.contains("main"), "{text}");
+        assert!(text.contains("sub 1"), "{text}");
+        assert!(text.contains("fan-out"), "{text}");
+        assert!(text.contains("1000") || text.contains("900"), "{text}");
+    }
+
+    #[test]
+    fn share_mode_redacts_uuids_across_tasks() {
+        let a = Record::from_finish(
+            &node(
+                "287f4ade-7829-4477-ab3c-825dd4c29171",
+                "287f4ade-7829-4477-ab3c-825dd4c29171",
+                None,
+            ),
+            &Usage {
+                output: 10,
+                ..Default::default()
+            },
+            false,
+            1,
+        );
+        let b = Record::from_finish(
+            &node(
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                None,
+            ),
+            &Usage {
+                output: 20,
+                ..Default::default()
+            },
+            false,
+            1,
+        );
+        let text = render(&[a, b], None, true);
+        assert!(!text.contains("287f4ade"), "{text}");
+        assert!(!text.contains("aaaaaaaa"), "{text}");
+        assert!(text.contains("task 1"), "{text}");
+        assert!(text.contains("task 2"), "{text}");
+    }
+
+    #[test]
+    fn default_report_still_shows_the_task_id() {
+        let rec = Record::from_finish(
+            &node("sess-1", "sess-1", None),
+            &Usage {
+                output: 100,
+                ..Default::default()
+            },
+            false,
+            1,
+        );
+        let text = render(&[rec], None, false);
+        assert!(text.contains("task sess-1"), "{text}");
+        assert!(!text.contains("task 1\n"), "{text}");
     }
 }

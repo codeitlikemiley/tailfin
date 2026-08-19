@@ -63,9 +63,9 @@ Gate: on a machine (or clean VM/container) without Rust, install script → work
 
 ## M7 — launch pack
 - [ ] run raz on your own real work for 2+ days; capture your own fan-out numbers
-- [ ] launch post drafted: number in the title, comparative framing, tool in
+- [x] launch post drafted: number in the title, comparative framing, tool in
       paragraph two; draft lives in docs/launch.md
-- [ ] `raz report --share` produces a paste-ready table with no identifying paths
+- [x] `raz report --share` produces a paste-ready table with no identifying paths
 Gate: you (the human) approve docs/launch.md. STOP and ask for this review.
 
 ## Post-v0.1 — the endgame ladder (docs/endgame.md). Do not start before the M7 gate.

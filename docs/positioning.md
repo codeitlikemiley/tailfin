@@ -17,9 +17,9 @@ Runners-up, kept for different surfaces:
 - *"Agents bill by the token. You work in tasks. raz is the translation."* — the conference-talk opener.
 - *"See what your agent spends when you're not looking."* — the ad-copy version; slightly too cute for the README.
 
-The launch post is a different artifact from the tagline and follows the measured rule — number in the title, comparative framing, tool in paragraph two:
+The launch post is a different artifact from the tagline and follows the measured rule — number in the title, comparative framing, tool in paragraph two. The live draft is docs/launch.md:
 
-> **"82% of what my coding agent spends is work I never see."**
+> **"48% of this coding-agent session was work I never saw."**
 
 ---
 
@@ -31,7 +31,7 @@ The launch post is a different artifact from the tagline and follows the measure
 
 **One page — why each audience says yes.**
 
-*The solo developer* has watched a single prompt spawn subagents and eat a week of quota, and their current tool reports "$214" with no tree. raz shows that 82% of the spend was work they never saw, names the $51 subagent, and (from M9) refuses to let it happen again. No account, no SDK, no database, no telemetry — one env var and it works, including against Ollama where no other cost tool even applies.
+*The solo developer* has watched a single prompt spawn subagents and eat a week of quota, and their current tool reports a dollar total with no tree. raz shows how much of the session was work they never saw, names the subagent, and (from M9) refuses to let it happen again. No account, no SDK, no database, no telemetry — one env var and it works, including against Ollama where no other cost tool even applies.
 
 *The team lead* runs a mixed shop — some people on Claude Code, some on Cursor, one holdout on aider — which makes every vendor-locked parser useless and every key-scoped gateway blind to what actually happened inside a key. raz attributes by task across the whole toolchain, with a confidence figure attached to every attribution, and the ledger is a local file the team can actually query.
 
@@ -57,7 +57,7 @@ These come from this project's own verification work; violating them burns the t
 2. Never put Cursor in the headline list — desktop chat works, background/headless can't take a base URL.
 3. Under Claude subscription auth, raz meters tokens against an opaque quota — it does not see the bill. Don't sell "control your Anthropic bill" to Max-plan users.
 4. "Works with any agent" means: exact for Claude Code and Codex (declared headers), inferred-with-disclosed-confidence for the rest. Say both halves.
-5. The 82% / 11.6× figures are one real session at illustrative list rates. Publish your own measured numbers at launch and retire these.
+5. Do not cite 82% / 11.6×. Those were an earlier research session. Launch numbers live in docs/launch.md (one measured session: 48% of tokens in a subagent, 1.92× fan-out). Ratios are real token counts; dollars are not a bill.
 
 ---
 

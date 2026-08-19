@@ -41,6 +41,9 @@ struct ReportArgs {
     ledger: PathBuf,
     #[arg(long)]
     rates: Option<PathBuf>,
+    /// Paste-ready table: no paths, no session or node ids.
+    #[arg(long)]
+    share: bool,
 }
 
 #[tokio::main]
@@ -93,7 +96,10 @@ fn report(args: ReportArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
         Some(p) => Some(load_rates(&p)?),
         None => None,
     };
-    print!("{}", raz_ledger::render(&records, rates.as_ref()));
+    print!(
+        "{}",
+        raz_ledger::render(&records, rates.as_ref(), args.share)
+    );
     Ok(())
 }
 
@@ -143,5 +149,31 @@ async fn shutdown_signal() {
     #[cfg(not(unix))]
     {
         let _ = ctrl_c.await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_share_flag_parses() {
+        let cli = Cli::try_parse_from(["raz", "report", "--share", "--ledger", "x.jsonl"]).unwrap();
+        match cli.cmd {
+            Cmd::Report(a) => {
+                assert!(a.share);
+                assert_eq!(a.ledger, PathBuf::from("x.jsonl"));
+            }
+            _ => panic!("expected report"),
+        }
+    }
+
+    #[test]
+    fn report_without_share_defaults_off() {
+        let cli = Cli::try_parse_from(["raz", "report"]).unwrap();
+        match cli.cmd {
+            Cmd::Report(a) => assert!(!a.share),
+            _ => panic!("expected report"),
+        }
     }
 }

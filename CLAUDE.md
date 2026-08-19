@@ -79,9 +79,9 @@ synthetic text unmistakably because it persists in history and prompt cache.
   API path only; `wire_api = "chat"` behaviour unverified. Test before claiming.
 - Cursor: desktop chat can use a custom base URL; background/headless `cursor-agent`
   cannot. Keep Cursor out of the headline compatibility list.
-- Fan-out figures in the launch material came from one real session (82% subagent
-  share, 11.6x multiplier) priced at illustrative list rates. Ratios are real token
-  counts; dollars are not a bill.
+- Fan-out figures in the launch material came from one real session (48% of
+  tokens in a subagent, 1.92× the main thread) priced at illustrative list rates.
+  Ratios are real token counts; dollars are not a bill. See docs/launch.md.
 
 ## Working protocol
 

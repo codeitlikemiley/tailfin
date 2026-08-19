@@ -181,6 +181,9 @@ Not "Show HN: my proxy." Every dead launch in this category pitched a tool; ever
 
 > **82% of what my coding agent spends is work I never see**
 
+That figure was the research session that set the shape of the post. v0.1 launch
+numbers are in docs/launch.md. Do not reuse 82% / 11.6×.
+
 Comparative framing travels (706 points for "Claude Code sends 33k tokens before reading the prompt; OpenCode sends 7k"). Introspective framing does not (4 points for a *more* dramatic stat the same week). So lead with the comparison — your fan-out vs. your main thread, or agent A vs. agent B — and put the tool in the second paragraph.
 
 ---

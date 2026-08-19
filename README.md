@@ -40,6 +40,8 @@ raz report
 ```
 
 `raz report --rates rates.toml` prints dollars. Without a rate card it prints tokens only.
+`raz report --share` prints the same table with session ids and paths stripped,
+so it can be pasted.
 
 ## Honest constraints
 
@@ -51,9 +53,9 @@ Claude Code under subscription auth (`ANTHROPIC_BASE_URL` set, no API key): traf
 passes through raz but billing follows the subscription's opaque quota. We meter
 tokens; we do not see their bill. Never claim otherwise.
 
-Fan-out figures in the launch material came from one real session (82% subagent
-share, 11.6x multiplier) priced at illustrative list rates. Ratios are real token
-counts; dollars are not a bill.
+Fan-out figures in the launch material came from one real session (48% of
+tokens in a subagent, 1.92× the main thread) priced at illustrative list rates.
+Ratios are real token counts; dollars are not a bill. See docs/launch.md.
 
 ## What it actually measures
 
