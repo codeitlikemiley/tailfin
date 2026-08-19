@@ -6,6 +6,7 @@
 mod hop;
 mod proxy;
 mod serve;
+mod tee;
 
 pub use hop::strip_hop_by_hop;
 pub use proxy::{Proxy, RelayBody};
@@ -106,9 +107,11 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy::Meter;
     use bytes::Bytes;
     use http_body_util::{BodyExt, Full};
     use hyper::body::Incoming;
+    use hyper::body::{Body, Frame};
     use hyper::header::{HeaderMap, HeaderValue};
     use hyper::server::conn::http1;
     use hyper::service::service_fn;
@@ -116,10 +119,12 @@ mod tests {
     use hyper_util::client::legacy::Client;
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use std::convert::Infallible;
+    use std::pin::Pin;
     use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
     use std::time::Duration;
     use tokio::net::TcpListener;
-    use tokio::sync::{oneshot, Notify};
+    use tokio::sync::{mpsc, oneshot, Notify};
 
     #[test]
     fn parse_defaults_listen_to_loopback_7171() {
@@ -127,6 +132,12 @@ mod tests {
         assert_eq!(c.listen, DEFAULT_LISTEN);
         assert_eq!(c.listen.port(), 7171);
         assert!(c.listen.ip().is_loopback());
+    }
+
+    #[test]
+    fn accepts_https_upstream() {
+        Proxy::new("https://api.anthropic.com".parse().unwrap())
+            .expect("https upstream should construct");
     }
 
     #[test]
@@ -158,10 +169,32 @@ mod tests {
         body: Bytes,
     }
 
-    async fn spawn_http_server<H, Fut>(handler: H) -> std::net::SocketAddr
+    struct MpscBody {
+        rx: mpsc::Receiver<Bytes>,
+    }
+
+    impl Body for MpscBody {
+        type Data = Bytes;
+        type Error = Infallible;
+
+        fn poll_frame(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+            match self.rx.poll_recv(cx) {
+                Poll::Ready(Some(data)) => Poll::Ready(Some(Ok(Frame::data(data)))),
+                Poll::Ready(None) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            }
+        }
+    }
+
+    async fn spawn_http_server<H, Fut, B>(handler: H) -> std::net::SocketAddr
     where
         H: Fn(Request<Bytes>) -> Fut + Send + Sync + 'static,
-        Fut: std::future::Future<Output = Response<Full<Bytes>>> + Send + 'static,
+        Fut: std::future::Future<Output = Response<B>> + Send + 'static,
+        B: Body<Data = Bytes> + Send + 'static,
+        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -200,10 +233,21 @@ mod tests {
         oneshot::Sender<()>,
         tokio::task::JoinHandle<()>,
     ) {
+        spawn_proxy_cfg(upstream, |p| p).await
+    }
+
+    async fn spawn_proxy_cfg(
+        upstream: std::net::SocketAddr,
+        configure: impl FnOnce(Proxy) -> Proxy,
+    ) -> (
+        std::net::SocketAddr,
+        oneshot::Sender<()>,
+        tokio::task::JoinHandle<()>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let uri: Uri = format!("http://{upstream}").parse().unwrap();
-        let proxy = Proxy::new(uri).unwrap();
+        let proxy = configure(Proxy::new(uri).unwrap());
         let (tx, rx) = oneshot::channel();
         let handle = tokio::spawn(async move {
             serve(listener, proxy, async {
@@ -537,5 +581,151 @@ mod tests {
         handle.await.unwrap();
         assert_eq!(collected.status, StatusCode::BAD_GATEWAY);
         assert_eq!(collected.body.as_ref(), b"bad gateway\n");
+    }
+
+    const SSE_START: &[u8] = b"event: message_start\ndata: {\"type\":\"message_start\"}\n\n";
+    const SSE_DELTA: &[u8] =
+        b"event: content_block_delta\ndata: {\"type\":\"content_block_delta\"}\n\n";
+    const SSE_END: &[u8] = b"event: message_delta\ndata: {\"type\":\"message_delta\"}\n\n";
+
+    async fn sse_stub(first_sent: Arc<Notify>, send_rest: Arc<Notify>) -> std::net::SocketAddr {
+        spawn_http_server(move |_req| {
+            let first_sent = first_sent.clone();
+            let send_rest = send_rest.clone();
+            async move {
+                let (tx, rx) = mpsc::channel(8);
+                tokio::spawn(async move {
+                    let _ = tx.send(Bytes::from_static(SSE_START)).await;
+                    first_sent.notify_one();
+                    send_rest.notified().await;
+                    let _ = tx.send(Bytes::from_static(SSE_DELTA)).await;
+                    let _ = tx.send(Bytes::from_static(SSE_END)).await;
+                });
+                Response::builder()
+                    .status(200)
+                    .header("content-type", "text/event-stream")
+                    .header("cache-control", "no-cache")
+                    .body(MpscBody { rx })
+                    .unwrap()
+            }
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn sse_is_forwarded_unbuffered() {
+        let first_sent = Arc::new(Notify::new());
+        let send_rest = Arc::new(Notify::new());
+        let stub = sse_stub(first_sent.clone(), send_rest.clone()).await;
+        let (proxy_addr, shutdown, handle) = spawn_proxy(stub).await;
+
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(format!("http://{proxy_addr}/v1/messages"))
+            .header("accept", "text/event-stream")
+            .body(Full::new(Bytes::from_static(br#"{"stream":true}"#)))
+            .unwrap();
+        let resp = client.request(req).await.expect("proxy request");
+        assert_eq!(resp.status(), StatusCode::OK);
+        let mut body = resp.into_body();
+
+        tokio::time::timeout(Duration::from_secs(2), first_sent.notified())
+            .await
+            .expect("stub should emit the first SSE frame");
+
+        let first = tokio::time::timeout(Duration::from_secs(2), body.frame())
+            .await
+            .expect("first frame should arrive before the stub continues")
+            .expect("frame")
+            .expect("ok")
+            .into_data()
+            .expect("data");
+        assert_eq!(first.as_ref(), SSE_START);
+
+        send_rest.notify_one();
+        let rest = body.collect().await.expect("rest").to_bytes();
+        let mut expected = Vec::from(SSE_DELTA);
+        expected.extend_from_slice(SSE_END);
+        assert_eq!(rest.as_ref(), expected);
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn tee_sees_every_sse_frame() {
+        let first_sent = Arc::new(Notify::new());
+        let send_rest = Arc::new(Notify::new());
+        let stub = sse_stub(first_sent.clone(), send_rest.clone()).await;
+        let frames = Arc::new(Mutex::new(0usize));
+        let (proxy_addr, shutdown, handle) = spawn_proxy_cfg(stub, {
+            let frames = frames.clone();
+            move |p| p.with_meter(Meter::Count(frames))
+        })
+        .await;
+
+        send_rest.notify_one();
+        let collected = send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            HeaderMap::new(),
+            Bytes::from_static(br#"{"stream":true}"#),
+        )
+        .await;
+        assert_eq!(collected.status, StatusCode::OK);
+        let mut expected = Vec::from(SSE_START);
+        expected.extend_from_slice(SSE_DELTA);
+        expected.extend_from_slice(SSE_END);
+        assert_eq!(collected.body.as_ref(), expected);
+
+        tokio::task::yield_now().await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        assert_eq!(*frames.lock().unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn kill_the_meter_still_delivers_the_full_response() {
+        let first_sent = Arc::new(Notify::new());
+        let send_rest = Arc::new(Notify::new());
+        let stub = sse_stub(first_sent.clone(), send_rest.clone()).await;
+        let (proxy_addr, shutdown, handle) =
+            spawn_proxy_cfg(stub, |p| p.with_meter(Meter::KillAfter(1))).await;
+
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(format!("http://{proxy_addr}/v1/messages"))
+            .body(Full::new(Bytes::from_static(br#"{"stream":true}"#)))
+            .unwrap();
+        let resp = client.request(req).await.expect("proxy request");
+        let mut body = resp.into_body();
+
+        tokio::time::timeout(Duration::from_secs(2), first_sent.notified())
+            .await
+            .expect("first frame teed (and meter killed)");
+        let first = body
+            .frame()
+            .await
+            .expect("frame")
+            .expect("ok")
+            .into_data()
+            .expect("data");
+        assert_eq!(first.as_ref(), SSE_START);
+
+        send_rest.notify_one();
+        let rest = body
+            .collect()
+            .await
+            .expect("client still got the rest")
+            .to_bytes();
+        let mut expected = Vec::from(SSE_DELTA);
+        expected.extend_from_slice(SSE_END);
+        assert_eq!(rest.as_ref(), expected);
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
     }
 }

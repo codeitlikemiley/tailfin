@@ -15,10 +15,10 @@ Gate: `cargo test --workspace` → 42 passing on a clean clone.
 Gate: a curl of a non-streaming completion through raz is byte-identical to direct.
 
 ## M2 — streaming fidelity
-- [ ] SSE responses relayed unbuffered, eager flush
-- [ ] tee: response bytes cloned into an mpsc consumed by a task that only logs frame
+- [x] SSE responses relayed unbuffered, eager flush
+- [x] tee: response bytes cloned into an mpsc consumed by a task that only logs frame
       counts for now
-- [ ] kill-the-meter test: metering task aborted mid-stream, client still gets a
+- [x] kill-the-meter test: metering task aborted mid-stream, client still gets a
       complete response
 - [ ] REAL-AGENT GATE: a full interactive Claude Code session through raz —
       streaming, tool use, a subagent spawn — with no visible behaviour change
