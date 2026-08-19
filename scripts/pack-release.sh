@@ -16,5 +16,14 @@ trap 'rm -rf "$stage"' EXIT
 cp "$bin" "$stage/raz"
 chmod +x "$stage/raz"
 mkdir -p "$dist"
-tar -C "$stage" -czf "$dist/raz-${target}.tar.gz" raz
-echo "wrote $dist/raz-${target}.tar.gz"
+archive="$dist/raz-${target}.tar.gz"
+tar -C "$stage" -czf "$archive" raz
+(
+  cd "$dist"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "raz-${target}.tar.gz"
+  else
+    shasum -a 256 "raz-${target}.tar.gz"
+  fi
+) | tee "$archive.sha256"
+echo "wrote $archive"

@@ -18,16 +18,16 @@ v0.1 observes. It does not enforce. The task is the unit.
 
 ## Install
 
-Prebuilt binaries. You do not compile.
+Prebuilt binaries from [GitHub Releases](https://github.com/hexuria/raz/releases). You do not compile.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/goldcoders/raz/main/install.sh | bash
+curl -fsSL https://github.com/hexuria/raz/releases/latest/download/install.sh | bash
 ```
 
-Homebrew:
+Pin a tag with `RAZ_VERSION=v0.1.0`. Homebrew:
 
 ```sh
-brew tap goldcoders/raz https://github.com/goldcoders/raz
+brew tap hexuria/raz https://github.com/hexuria/raz
 brew install raz
 ```
 

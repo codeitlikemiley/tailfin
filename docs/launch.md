@@ -28,7 +28,7 @@ reads the parent log, which contains the subagent's compact result, so fan-out
 looks like cheap parallelism. The wire sees the whole tree.
 
 ```
-curl -fsSL https://raw.githubusercontent.com/goldcoders/raz/main/install.sh | bash
+curl -fsSL https://github.com/hexuria/raz/releases/latest/download/install.sh | bash
 raz run --upstream https://api.anthropic.com
 ANTHROPIC_BASE_URL=http://localhost:7171 claude
 raz report --share

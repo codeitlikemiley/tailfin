@@ -4,12 +4,14 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  build:
+    name: build ${{ matrix.target }}
     strategy:
       fail-fast: false
       matrix:
@@ -21,17 +23,83 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: build
-        run: cargo build -p raz-cli --release --target ${{ matrix.target }}
+        run: cargo build -p raz-cli --release --locked --target ${{ matrix.target }}
       - name: pack
         run: bash scripts/pack-release.sh "target/${{ matrix.target }}/release/raz" "${{ matrix.target }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raz-${{ matrix.target }}
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: stage assets
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name 'raz-*.tar.gz' -o -name 'raz-*.sha256' \) -exec cp {} dist/ \;
+          cat dist/*.sha256 | sort > dist/SHA256SUMS
+          cp install.sh dist/install.sh
+          ls -la dist
+          echo "--- SHA256SUMS ---"
+          cat dist/SHA256SUMS
+      - name: notes
+        run: |
+          tag="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          {
+            echo "## Install"
+            echo
+            echo "Prebuilt binary. You do not compile."
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://github.com/hexuria/raz/releases/latest/download/install.sh | bash"
+            echo '```'
+            echo
+            echo "Or pin this tag:"
+            echo
+            echo '```sh'
+            echo "curl -fsSL https://github.com/hexuria/raz/releases/download/${tag}/install.sh | RAZ_VERSION=${tag} bash"
+            echo '```'
+            echo
+            echo "Homebrew:"
+            echo
+            echo '```sh'
+            echo "brew tap hexuria/raz https://github.com/hexuria/raz"
+            echo "brew install raz"
+            echo '```'
+            echo
+            echo "Checksums are in \`SHA256SUMS\`. macOS arm64/x64 and Linux x64 only — no Windows build."
+          } > release-notes.md
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/raz-${{ matrix.target }}.tar.gz
+          generate_release_notes: true
+          body_path: release-notes.md
+          files: |
+            dist/raz-aarch64-apple-darwin.tar.gz
+            dist/raz-aarch64-apple-darwin.tar.gz.sha256
+            dist/raz-x86_64-apple-darwin.tar.gz
+            dist/raz-x86_64-apple-darwin.tar.gz.sha256
+            dist/raz-x86_64-unknown-linux-gnu.tar.gz
+            dist/raz-x86_64-unknown-linux-gnu.tar.gz.sha256
+            dist/SHA256SUMS
+            dist/install.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

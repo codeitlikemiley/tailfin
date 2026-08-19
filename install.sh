@@ -5,9 +5,10 @@
 #   RAZ_TARBALL=./dist/raz-<triple>.tar.gz PREFIX=$HOME/.local ./install.sh
 set -euo pipefail
 
-REPO="${RAZ_REPO:-goldcoders/raz}"
+REPO="${RAZ_REPO:-hexuria/raz}"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${PREFIX}/bin"
+VERSION="${RAZ_VERSION:-latest}"
 
 die() { echo "raz-install: $*" >&2; exit 1; }
 
@@ -33,7 +34,11 @@ if [ -n "${RAZ_TARBALL:-}" ]; then
 else
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
-  url="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+  if [ "$VERSION" = latest ]; then
+    url="https://github.com/${REPO}/releases/latest/download/${ASSET}"
+  else
+    url="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
+  fi
   if command -v curl >/dev/null 2>&1; then
     curl -fsSL "$url" -o "$tmp/$ASSET" || die "download failed: $url"
   elif command -v wget >/dev/null 2>&1; then
@@ -62,5 +67,6 @@ echo "raz ok"
 echo "put $BIN_DIR on PATH if it is not already:"
 echo "  export PATH=\"$BIN_DIR:\$PATH\""
 echo
+echo "  # if another 'raz' is already on PATH, call this binary by full path"
 echo "  raz run --upstream https://api.anthropic.com"
 echo "  ANTHROPIC_BASE_URL=http://localhost:7171 claude"

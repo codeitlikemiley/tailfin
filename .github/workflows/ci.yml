@@ -2,27 +2,41 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: test
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
-      - name: test
-        run: cargo test --workspace
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt (crates we own)
+        run: cargo fmt -p raz-cli -p raz-ledger -p raz-proxy -- --check
       - name: clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: test
+        run: cargo test --workspace --locked
       - name: install.sh syntax
         run: bash -n install.sh
-      - name: pack and install without cargo
+      - name: pack and install without a second cargo
         run: |
-          cargo build -p raz-cli --release
+          cargo build -p raz-cli --release --locked
           bash scripts/pack-release.sh target/release/raz x86_64-unknown-linux-gnu
           PREFIX="$HOME/.local" RAZ_TARBALL=dist/raz-x86_64-unknown-linux-gnu.tar.gz bash install.sh
           "$HOME/.local/bin/raz" report --help
           ./target/release/raz-cli report --help
           ./target/release/raz report --help
+          ./target/release/raz-cli doctor testdata/gateway-litellm.yaml
