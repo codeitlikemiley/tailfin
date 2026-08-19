@@ -24,7 +24,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: fmt (crates we own)
-        run: cargo fmt -p raz-cli -p raz-ledger -p raz-proxy -- --check
+        run: cargo fmt -p tailfin -p tailfin-ledger -p tailfin-proxy -- --check
       - name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: test
@@ -33,10 +33,9 @@ jobs:
         run: bash -n install.sh
       - name: pack and install without a second cargo
         run: |
-          cargo build -p raz-cli --release --locked
-          bash scripts/pack-release.sh target/release/raz x86_64-unknown-linux-gnu
-          PREFIX="$HOME/.local" RAZ_TARBALL=dist/raz-x86_64-unknown-linux-gnu.tar.gz bash install.sh
-          "$HOME/.local/bin/raz" report --help
-          ./target/release/raz-cli report --help
-          ./target/release/raz report --help
-          ./target/release/raz-cli doctor testdata/gateway-litellm.yaml
+          cargo build -p tailfin --release --locked
+          bash scripts/pack-release.sh target/release/tailfin x86_64-unknown-linux-gnu
+          PREFIX="$HOME/.local" TAILFIN_TARBALL=dist/tailfin-x86_64-unknown-linux-gnu.tar.gz bash install.sh
+          "$HOME/.local/bin/tailfin" report --help
+          ./target/release/tailfin report --help
+          ./target/release/tailfin doctor testdata/gateway-litellm.yaml

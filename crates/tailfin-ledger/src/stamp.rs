@@ -1,7 +1,7 @@
 //! Cost stamps and per-hunk blame. Opt-in; refused below capture-grade confidence.
 
 use crate::{tasks_from_records, Record};
-use raz_wire::RateCard;
+use tailfin_wire::RateCard;
 
 /// Declared identity only. Inferred maxes at 0.99; anonymous is 0.
 pub const CAPTURE_GRADE: f32 = 1.0;
@@ -37,7 +37,7 @@ pub fn format_stamp(records: &[Record], rates: Option<&RateCard>) -> Result<Stri
         None => "tokens-only".into(),
     };
     Ok(format!(
-        "Raz-Cost: tasks={n} cost={cost} fan-out={fan:.2}x incomplete={incomplete} conf={conf:.2} models=declared"
+        "Tailfin-Cost: tasks={n} cost={cost} fan-out={fan:.2}x incomplete={incomplete} conf={conf:.2} models=declared"
     ))
 }
 
@@ -86,8 +86,8 @@ pub fn format_blame(records: &[Record], rates: Option<&RateCard>) -> String {
 mod tests {
     use super::*;
     use crate::Record;
-    use raz_ident::{IdentitySource, NodeRef};
-    use raz_wire::Usage;
+    use tailfin_ident::{IdentitySource, NodeRef};
+    use tailfin_wire::Usage;
 
     fn rec(conf: f32) -> Record {
         let mut r = Record::from_finish(
@@ -126,7 +126,7 @@ mod tests {
     fn stamp_line_has_required_fields() {
         let line = format_stamp(&[rec(1.0)], None).unwrap();
         for needle in [
-            "Raz-Cost:",
+            "Tailfin-Cost:",
             "tasks=",
             "cost=",
             "fan-out=",

@@ -1,19 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-  "crates/raz-ident",
-  "crates/raz-wire",
-  "crates/raz-tree",
-  "crates/raz-proxy",
-  "crates/raz-ledger",
-  "crates/raz-cli",
+  "crates/tailfin-ident",
+  "crates/tailfin-wire",
+  "crates/tailfin-tree",
+  "crates/tailfin-proxy",
+  "crates/tailfin-ledger",
+  "crates/tailfin",
 ]
 
 [workspace.package]
 version    = "0.1.0"
 edition    = "2021"
 license    = "Apache-2.0"
-repository = "https://github.com/hexuria/raz"
+repository = "https://github.com/codeitlikemiley/tailfin"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

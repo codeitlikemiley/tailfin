@@ -1,4 +1,4 @@
-# raz
+# tailfin
 
 A Rust proxy that infers **task structure** from LLM wire traffic, so per-task cost
 accounting — and later a per-task budget — becomes possible for agents nobody modified.
@@ -6,7 +6,7 @@ accounting — and later a per-task budget — becomes possible for agents nobod
 The claim that defines the project: every product that enforces a per-task ceiling today
 requires the caller to declare the task boundary (an SDK context manager, a registered
 agent, a trace-id header, a hosted harness). None can draw a boundary around an unmodified
-coding agent that just opens an HTTPS connection. raz draws it anyway. Everything else is
+coding agent that just opens an HTTPS connection. tailfin draws it anyway. Everything else is
 downstream of that.
 
 v0.1 is **observation only**: task tree + fan-out ledger + report. No enforcement until M9.
@@ -44,12 +44,12 @@ v0.1 is **observation only**: task tree + fan-out ledger + report. No enforcemen
 
 | crate | role | allowed heavy deps |
 |---|---|---|
-| raz-ident | task identity: header parsing + rolling prefix digest | none |
-| raz-wire | incremental SSE decode + usage extraction | serde_json only |
-| raz-tree | task arena, roll-up, admission | none beyond siblings |
-| raz-proxy | hyper/tokio relay + tee (M1–M2) | tokio, hyper, rustls |
-| raz-ledger | append-only JSONL, later SQLite (M5) | rusqlite (later) |
-| raz-cli | `raz run`, `raz report` (M5) | clap |
+| tailfin-ident | task identity: header parsing + rolling prefix digest | none |
+| tailfin-wire | incremental SSE decode + usage extraction | serde_json only |
+| tailfin-tree | task arena, roll-up, admission | none beyond siblings |
+| tailfin-proxy | hyper/tokio relay + tee (M1–M2) | tokio, hyper, rustls |
+| tailfin-ledger | append-only JSONL, later SQLite (M5) | rusqlite (later) |
+| tailfin | `tailfin run`, `tailfin report` (M5) | clap |
 
 The three core crates stay free of HTTP, async, and I/O forever — that is what makes
 them testable without a socket and reusable as cdylib/wasm later. New heavy
@@ -73,7 +73,7 @@ synthetic text unmistakably because it persists in history and prompt cache.
 ## Known caveats to preserve in user-facing docs
 
 - Claude Code under subscription auth (`ANTHROPIC_BASE_URL` set, no API key): traffic
-  passes through raz but billing follows the subscription's opaque quota. We meter
+  passes through tailfin but billing follows the subscription's opaque quota. We meter
   tokens; we do not see their bill. Never claim otherwise.
 - Codex headers (`x-codex-turn-metadata`, `root_turn_id`) verified on the Responses
   API path only; `wire_api = "chat"` behaviour unverified. Test before claiming.
@@ -98,11 +98,11 @@ synthetic text unmistakably because it persists in history and prompt cache.
   If a test is wrong, say so in the journal and fix it in its own commit.
 - Blocked? Append `BLOCKED:` to JOURNAL.md with what you tried, mark the ROADMAP item
   `[!]`, move to the next unblocked item if one exists, otherwise stop and ask.
-- Real-agent verification (from M2 on), at **every** milestone: rebuild the `raz`
+- Real-agent verification (from M2 on), at **every** milestone: rebuild the `tailfin`
   binary from the milestone's code, restart the proxy from that new binary (do
   not reuse the previous milestone's process), then run a real Claude Code
   session through it with `ANTHROPIC_BASE_URL=http://localhost:7171`. Confirm
-  normal behaviour plus correct ledger output (and, from M7, `raz report
+  normal behaviour plus correct ledger output (and, from M7, `tailfin report
   --share`). This is the gate that matters more than unit tests.
 
 ## North star (docs/endgame.md) — design consequences only

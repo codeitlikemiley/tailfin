@@ -1,4 +1,7 @@
-# raz journal
+# tailfin journal
+
+Historical entries below used the old name **raz** (arbor→raz at M0). The
+project renamed raz→tailfin on 2026-08-20.
 
 2026-08-19 20:35 — M0 — extracted arbor workspace, renamed arbor→raz (crates, packages, identifiers, docs); 42 tests passing, clippy clean — next: M1 proxy skeleton
 2026-08-19 21:01 — M1 — raz-proxy: hyper/tokio relay on 127.0.0.1:7171, hop-by-hop strip, Host rewrite, graceful shutdown; JSON body byte-identical through vs direct (55 tests) — next: M2 streaming fidelity + tee
@@ -24,4 +27,6 @@
 2026-08-20 01:24 — M11 — raz stamp/blame; capture-grade (conf=1.0) gate. Rebuilt /tmp/raz-m11; claude -p pong; stamp one-line Raz-Cost declared. BLOCKED: real PR stamp — next: M12 doctor
 2026-08-20 01:30 — M12 — raz doctor three rules with citations; fixture testdata/gateway-litellm.yaml. Rebuilt /tmp/raz-m12; claude -p pong complete. BLOCKED: production public LiteLLM config. Parked L5 untouched — next: none (ladder software shipped)
 2026-08-20 06:10 — ops — CI/release for hexuria/raz: fmt+clippy+test+install smoke; tag v* publishes tarballs+SHA256SUMS+install.sh on GitHub Releases — next: push and cut a tag
+2026-08-20 06:40 — rename — raz→tailfin everywhere (crates, bins, env, docs, Formula, CI); GitHub codeitlikemiley/tailfin. `tail -f` for the agent's flight. — next: tests + first tag on the new repo
+2026-08-20 07:15 — rename — 115 tests, clippy -D warnings clean; README command output captured from the binary (collapsed); LICENSE Apache-2.0 tailfin contributors — next: create codeitlikemiley/tailfin, push, tag v0.1.0
 

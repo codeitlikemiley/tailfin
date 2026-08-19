@@ -77,9 +77,9 @@ fn extract_ratio(lower: &str) -> Option<f64> {
 
 pub fn render_doctor(findings: &[Finding]) -> String {
     if findings.is_empty() {
-        return "raz doctor: no collisions\n".into();
+        return "tailfin doctor: no collisions\n".into();
     }
-    let mut s = format!("raz doctor: {} finding(s)\n", findings.len());
+    let mut s = format!("tailfin doctor: {} finding(s)\n", findings.len());
     for f in findings {
         s.push_str(&format!(
             "- [{}] {}\n  cite: {}\n",

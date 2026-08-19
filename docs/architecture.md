@@ -1,8 +1,9 @@
-# raz — architecture and week-one scope
+# tailfin — architecture and week-one scope
 
 *A Rust proxy that infers task structure from the wire. Solo developer day 1, enterprise later, same binary.*
 
-> Name is a placeholder — `raz` is a tree, and the task tree is the core data structure. Check crates.io and npm before committing; `bough` and `taproot` are alternates, though Taproot collides badly with Bitcoin.
+> **tailfin** — the flight recorder lives in the tail because that's what survives
+> a crash. `tail -f` for everything your agent did while you weren't looking.
 
 ---
 
@@ -10,7 +11,7 @@
 
 **Everything that enforces a per-task budget today requires the caller to declare the task boundary.** An SDK context manager, a registered agent object, a trace-id header, a hosted harness, a CI workflow. Not one of them can draw a boundary around an unmodified coding agent that opens an HTTPS connection and starts talking.
 
-raz draws it anyway. Everything else in this document is downstream of that.
+tailfin draws it anyway. Everything else in this document is downstream of that.
 
 That is also why the ladder works: once you can name a task, you can meter it, cap it, classify it, and arbitrate objectives for it. Without it, none of those are possible, which is exactly why nobody has built them.
 
@@ -30,15 +31,15 @@ Not preference — four properties the product actually needs.
 ## Crate layout
 
 ```
-raz/
+tailfin/
 ├─ crates/
-│  ├─ raz-ident      task identity: header parsers + prefix digest   [BUILT · 15 tests]
-│  ├─ raz-wire       SSE decode + provider-agnostic usage extraction [BUILT · 15 tests]
-│  ├─ raz-tree       task arena, cost roll-up, admission decisions   [BUILT · 12 tests]
-│  ├─ raz-ledger     append-only JSONL → SQLite                      [week 1, day 5]
-│  ├─ raz-proxy      hyper service, relay + tee                      [week 1, days 1–2]
-│  ├─ raz-policy     classes, floors, arbitration                    [week 4+]
-│  └─ raz-cli        run | report | doctor                           [week 1, day 5]
+│  ├─ tailfin-ident      task identity: header parsers + prefix digest   [BUILT · 15 tests]
+│  ├─ tailfin-wire       SSE decode + provider-agnostic usage extraction [BUILT · 15 tests]
+│  ├─ tailfin-tree       task arena, cost roll-up, admission decisions   [BUILT · 12 tests]
+│  ├─ tailfin-ledger     append-only JSONL → SQLite                      [week 1, day 5]
+│  ├─ tailfin-proxy      hyper service, relay + tee                      [week 1, days 1–2]
+│  ├─ tailfin-policy     classes, floors, arbitration                    [week 4+]
+│  └─ tailfin        run | report | doctor                           [week 1, day 5]
 ```
 
 The three crates that carry the hard logic **exist and pass 42 tests**. They have no HTTP dependency, no async runtime, and no I/O — which is why they were testable before a single byte moved over a socket. Build the network layer around a core that is already proven.
@@ -66,7 +67,7 @@ tokio::spawn(meter_task(rx, node_ref));
 Ok(Response::from_parts(parts, teed))
 ```
 
-There are exactly **two** places raz generates bytes rather than relaying them: the synthetic stop, and the deny response. Everywhere else it is a wire.
+There are exactly **two** places tailfin generates bytes rather than relaying them: the synthetic stop, and the deny response. Everywhere else it is a wire.
 
 ---
 
@@ -76,7 +77,7 @@ Two signals, in precedence order.
 
 **1. Declared.** Anthropic publishes `x-claude-code-session-id`, `x-claude-code-agent-id` (subagent requests only) and `x-claude-code-parent-agent-id` (nested only) *specifically so a gateway can attribute cost to parallel agents*. Codex ships `x-codex-turn-metadata` carrying `root_turn_id` — the task-tree root, the single best field for this in the ecosystem. When these are present, attribution is exact.
 
-**2. Inferred.** For aider, Cline, Continue, and anything custom, raz computes a **rolling prefix digest** over the message array — cumulative hashes at depths 1, 2, 4, 8, 16, 32. Two requests belong to the same task when they share a deep prefix.
+**2. Inferred.** For aider, Cline, Continue, and anything custom, tailfin computes a **rolling prefix digest** over the message array — cumulative hashes at depths 1, 2, 4, 8, 16, 32. Two requests belong to the same task when they share a deep prefix.
 
 The elegant part: *the signal that tells you two requests are one conversation is the same signal the provider uses to decide whether its prompt cache hits* — a stable, shared, ordered prefix. Prefix matching isn't a heuristic bolted on the side; it is the wire's own notion of continuity.
 
@@ -92,7 +93,7 @@ Guardrails that are already implemented and tested:
 ## Request lifecycle
 
 ```
-  client                raz                            upstream
+  client                tailfin                            upstream
     │                     │                                │
     │──── request ───────▶│                                │
     │                     ├─ classify: headers → declared  │
@@ -163,9 +164,9 @@ Realistic for one person at 40–60 focused hours. **Rung 0 only. No enforcement
 | Day | Deliverable | Done when |
 |---|---|---|
 | **1–2** | Transparent streaming proxy | Claude Code runs a full session through it with no behaviour change. Header fidelity, correct hop-by-hop handling, zero buffering. This is harder than it looks and it is the whole foundation |
-| **3** | Wire in `raz-ident` + `raz-tree` | A real session produces a correct task tree with subagents attached to parents |
-| **4** | Wire in `raz-wire` metering | Token counts match what the provider reports, cache tiers kept separate |
-| **5** | JSONL ledger + `raz report` | The fan-out table prints from a real session |
+| **3** | Wire in `tailfin-ident` + `tailfin-tree` | A real session produces a correct task tree with subagents attached to parents |
+| **4** | Wire in `tailfin-wire` metering | Token counts match what the provider reports, cache tiers kept separate |
+| **5** | JSONL ledger + `tailfin report` | The fan-out table prints from a real session |
 | **6** | Release engineering | Prebuilt binaries for macOS arm64/x64 + Linux x64 via GitHub Actions. Install script. Homebrew tap. README |
 | **7** | Buffer, then launch | |
 

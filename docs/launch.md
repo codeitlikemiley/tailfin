@@ -4,9 +4,9 @@ The main thread used 246,864 tokens. A subagent I didn't watch used 227,827 —
 almost as many, from one spawn. Together that's 474,691 tokens: a 1.92× fan-out
 on a single Claude Code session.
 
-raz is a local proxy. One environment variable points the agent at it; it draws
+tailfin is a local proxy. One environment variable points the agent at it; it draws
 the task tree from traffic the agent already sends. No SDK, no account, no
-telemetry. Everything stays on the machine. `raz report --share` prints the
+telemetry. Everything stays on the machine. `tailfin report --share` prints the
 paste-ready table:
 
 ```
@@ -28,10 +28,10 @@ reads the parent log, which contains the subagent's compact result, so fan-out
 looks like cheap parallelism. The wire sees the whole tree.
 
 ```
-curl -fsSL https://github.com/hexuria/raz/releases/latest/download/install.sh | bash
-raz run --upstream https://api.anthropic.com
+curl -fsSL https://github.com/codeitlikemiley/tailfin/releases/latest/download/install.sh | bash
+tailfin run --upstream https://api.anthropic.com
 ANTHROPIC_BASE_URL=http://localhost:7171 claude
-raz report --share
+tailfin report --share
 ```
 
 v0.1 observes. It does not enforce. When a per-task ceiling ships, it will be
@@ -39,7 +39,7 @@ hard only to within one in-flight request per branch.
 
 ## What these numbers are
 
-- One real Claude Code session, 2026-08-19, through raz. Declared identity
+- One real Claude Code session, 2026-08-19, through tailfin. Declared identity
   (session + agent headers). One subagent. Peak concurrency 1.
 - Token counts are from the provider's usage frames on the wire, cache tiers
   kept separate. They matched the on-disk transcript on the metered turns.
@@ -51,7 +51,7 @@ hard only to within one in-flight request per branch.
 ## What they are not
 
 Claude Code under subscription auth (`ANTHROPIC_BASE_URL` set, no API key):
-traffic passes through raz but billing follows the subscription's opaque quota.
+traffic passes through tailfin but billing follows the subscription's opaque quota.
 We meter tokens. We do not see the bill.
 
 At illustrative Opus-class list rates ($15 / M input, $75 / M output, cache

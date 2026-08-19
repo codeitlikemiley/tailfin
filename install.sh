@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Install a prebuilt raz binary. Never compiles.
-#   curl -fsSL https://raw.githubusercontent.com/${RAZ_REPO}/main/install.sh | bash
+# Install a prebuilt tailfin binary. Never compiles.
+#   curl -fsSL https://raw.githubusercontent.com/${TAILFIN_REPO}/main/install.sh | bash
 # Local gate / override:
-#   RAZ_TARBALL=./dist/raz-<triple>.tar.gz PREFIX=$HOME/.local ./install.sh
+#   TAILFIN_TARBALL=./dist/tailfin-<triple>.tar.gz PREFIX=$HOME/.local ./install.sh
 set -euo pipefail
 
-REPO="${RAZ_REPO:-hexuria/raz}"
+REPO="${TAILFIN_REPO:-codeitlikemiley/tailfin}"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${PREFIX}/bin"
-VERSION="${RAZ_VERSION:-latest}"
+VERSION="${TAILFIN_VERSION:-latest}"
 
-die() { echo "raz-install: $*" >&2; exit 1; }
+die() { echo "tailfin-install: $*" >&2; exit 1; }
 
 triple() {
   os="$(uname -s)"
@@ -26,11 +26,11 @@ triple() {
 }
 
 TARGET="$(triple)"
-ASSET="raz-${TARGET}.tar.gz"
+ASSET="tailfin-${TARGET}.tar.gz"
 
-if [ -n "${RAZ_TARBALL:-}" ]; then
-  tarball="$RAZ_TARBALL"
-  [ -f "$tarball" ] || die "RAZ_TARBALL not a file: $tarball"
+if [ -n "${TAILFIN_TARBALL:-}" ]; then
+  tarball="$TAILFIN_TARBALL"
+  [ -f "$tarball" ] || die "TAILFIN_TARBALL not a file: $tarball"
 else
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
@@ -52,21 +52,20 @@ fi
 extract="$(mktemp -d)"
 trap 'rm -rf "$extract" ${tmp:+"$tmp"}' EXIT
 tar -xzf "$tarball" -C "$extract"
-[ -f "$extract/raz" ] || die "archive missing raz binary"
+[ -f "$extract/tailfin" ] || die "archive missing tailfin binary"
 
 mkdir -p "$BIN_DIR"
-install -m 0755 "$extract/raz" "$BIN_DIR/raz"
+install -m 0755 "$extract/tailfin" "$BIN_DIR/tailfin"
 # Ad-hoc sign so macOS Gatekeeper does not stall unsigned downloads.
 if [ "$(uname -s)" = Darwin ] && command -v codesign >/dev/null 2>&1; then
-  codesign --force --sign - "$BIN_DIR/raz" >/dev/null 2>&1 || true
+  codesign --force --sign - "$BIN_DIR/tailfin" >/dev/null 2>&1 || true
 fi
 
-echo "installed $BIN_DIR/raz"
-"$BIN_DIR/raz" report --help >/dev/null
-echo "raz ok"
+echo "installed $BIN_DIR/tailfin"
+"$BIN_DIR/tailfin" report --help >/dev/null
+echo "tailfin ok"
 echo "put $BIN_DIR on PATH if it is not already:"
 echo "  export PATH=\"$BIN_DIR:\$PATH\""
 echo
-echo "  # if another 'raz' is already on PATH, call this binary by full path"
-echo "  raz run --upstream https://api.anthropic.com"
+echo "  tailfin run --upstream https://api.anthropic.com"
 echo "  ANTHROPIC_BASE_URL=http://localhost:7171 claude"

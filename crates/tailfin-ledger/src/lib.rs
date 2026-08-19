@@ -18,15 +18,15 @@ pub use replay::{
 };
 pub use stamp::{format_blame, format_stamp, stamp_allowed, CAPTURE_GRADE};
 
-use raz_ident::NodeRef;
-use raz_tree::{Arena, Task};
-use raz_wire::{RateCard, Usage};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tailfin_ident::NodeRef;
+use tailfin_tree::{Arena, Task};
+use tailfin_wire::{RateCard, Usage};
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -188,7 +188,7 @@ pub fn tasks_from_records(records: &[Record]) -> Vec<Task> {
             root: rec.task_id.clone(),
             node: rec.node.clone(),
             parent: rec.parent.clone(),
-            source: raz_ident::IdentitySource::Declared {
+            source: tailfin_ident::IdentitySource::Declared {
                 session: rec.task_id.clone(),
                 node: Some(rec.node.clone()),
                 parent: rec.parent.clone(),
@@ -366,13 +366,14 @@ fn trunc(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use raz_ident::IdentitySource;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use tailfin_ident::IdentitySource;
 
     fn tmp() -> PathBuf {
         static N: AtomicU64 = AtomicU64::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let p = std::env::temp_dir().join(format!("raz-ledger-{}-{n}.jsonl", std::process::id()));
+        let p =
+            std::env::temp_dir().join(format!("tailfin-ledger-{}-{n}.jsonl", std::process::id()));
         let _ = std::fs::remove_file(&p);
         p
     }
@@ -483,7 +484,7 @@ mod tests {
 
     #[test]
     fn missing_ledger_file_is_empty_not_an_error() {
-        let p = std::env::temp_dir().join("raz-does-not-exist-hopefully.jsonl");
+        let p = std::env::temp_dir().join("tailfin-does-not-exist-hopefully.jsonl");
         let _ = std::fs::remove_file(&p);
         assert!(Ledger::read_all(&p).unwrap().is_empty());
     }

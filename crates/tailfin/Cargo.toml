@@ -1,23 +1,20 @@
 [package]
-name = "raz-cli"
+name = "tailfin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "raz run, report, replay, stamp, blame, doctor"
+repository.workspace = true
+description = "tailfin run, report, replay, stamp, blame, doctor"
 
 [[bin]]
-name = "raz"
-path = "src/main.rs"
-
-[[bin]]
-name = "raz-cli"
+name = "tailfin"
 path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
 serde = { workspace = true }
-raz-ledger = { path = "../raz-ledger" }
-raz-proxy = { path = "../raz-proxy" }
-raz-wire = { path = "../raz-wire" }
+tailfin-ledger = { path = "../tailfin-ledger" }
+tailfin-proxy = { path = "../tailfin-proxy" }
+tailfin-wire = { path = "../tailfin-wire" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 toml = "1"

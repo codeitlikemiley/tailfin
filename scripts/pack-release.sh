@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pack a raz binary into dist/raz-<target>.tar.gz with the binary at archive root.
+# Pack a tailfin binary into dist/tailfin-<target>.tar.gz with the binary at archive root.
 set -euo pipefail
 # macOS tar otherwise stuffs Apple xattrs that GNU tar warns about.
 export COPYFILE_DISABLE=1
@@ -13,17 +13,17 @@ dist="$root/dist"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 
-cp "$bin" "$stage/raz"
-chmod +x "$stage/raz"
+cp "$bin" "$stage/tailfin"
+chmod +x "$stage/tailfin"
 mkdir -p "$dist"
-archive="$dist/raz-${target}.tar.gz"
-tar -C "$stage" -czf "$archive" raz
+archive="$dist/tailfin-${target}.tar.gz"
+tar -C "$stage" -czf "$archive" tailfin
 (
   cd "$dist"
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "raz-${target}.tar.gz"
+    sha256sum "tailfin-${target}.tar.gz"
   else
-    shasum -a 256 "raz-${target}.tar.gz"
+    shasum -a 256 "tailfin-${target}.tar.gz"
   fi
 ) | tee "$archive.sha256"
 echo "wrote $archive"

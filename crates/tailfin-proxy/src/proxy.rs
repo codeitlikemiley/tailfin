@@ -12,11 +12,11 @@ use hyper_rustls::HttpsConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use raz_ident::{PrefixDigest, SessionIndex};
-use raz_tree::{Admission, Arena, StopStyle};
-use raz_wire::{Dialect, Meter as UsageMeter, RateCard, SseDecoder, Usage};
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
+use tailfin_ident::{PrefixDigest, SessionIndex};
+use tailfin_tree::{Admission, Arena, StopStyle};
+use tailfin_wire::{Dialect, Meter as UsageMeter, RateCard, SseDecoder, Usage};
 use tokio::sync::mpsc;
 
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -56,8 +56,8 @@ pub struct Proxy {
     shadow: Arc<Mutex<SessionIndex>>,
     arena: Arc<Mutex<Arena>>,
     shadow_notes: Arc<Mutex<Vec<ShadowCmp>>>,
-    ledger: Option<Arc<raz_ledger::Ledger>>,
-    capture: Option<Arc<raz_ledger::CaptureStore>>,
+    ledger: Option<Arc<tailfin_ledger::Ledger>>,
+    capture: Option<Arc<tailfin_ledger::CaptureStore>>,
     rates: Option<RateCard>,
 }
 
@@ -109,12 +109,12 @@ impl Proxy {
         self
     }
 
-    pub fn with_ledger(mut self, ledger: Arc<raz_ledger::Ledger>) -> Self {
+    pub fn with_ledger(mut self, ledger: Arc<tailfin_ledger::Ledger>) -> Self {
         self.ledger = Some(ledger);
         self
     }
 
-    pub fn with_capture(mut self, store: Arc<raz_ledger::CaptureStore>) -> Self {
+    pub fn with_capture(mut self, store: Arc<tailfin_ledger::CaptureStore>) -> Self {
         self.capture = Some(store);
         self
     }
@@ -145,7 +145,7 @@ impl Proxy {
         match self.relay_inner(req).await {
             Ok(resp) => resp,
             Err(err) => {
-                crate::log::log(format!("raz: upstream error: {err}"));
+                crate::log::log(format!("tailfin: upstream error: {err}"));
                 gateway_error()
             }
         }
@@ -186,7 +186,7 @@ impl Proxy {
             let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
             arena.task_mut(&node.root).begin(&node, None);
             crate::log::log(format!(
-                "raz: begin root={} node={} parent={:?} declared={} conf={:.2} path={}",
+                "tailfin: begin root={} node={} parent={:?} declared={} conf={:.2} path={}",
                 node.root,
                 node.node,
                 node.parent,
@@ -210,7 +210,7 @@ impl Proxy {
             };
             self.finish_node(&node, true, None);
             crate::log::log(format!(
-                "raz: stop {:?} spent={spent_micros} ceiling={ceiling_micros}",
+                "tailfin: stop {:?} spent={spent_micros} ceiling={ceiling_micros}",
                 style
             ));
             return Ok(stop_response(style, &parts.headers));
@@ -264,7 +264,12 @@ impl Proxy {
         Ok(Response::from_parts(parts, body))
     }
 
-    fn finish_node(&self, node: &raz_ident::NodeRef, complete: bool, capture_id: Option<String>) {
+    fn finish_node(
+        &self,
+        node: &tailfin_ident::NodeRef,
+        complete: bool,
+        capture_id: Option<String>,
+    ) {
         finish_locked(
             &self.arena,
             node,
@@ -278,7 +283,7 @@ impl Proxy {
     fn observe_request(
         &self,
         buf: Bytes,
-        live: raz_ident::NodeRef,
+        live: tailfin_ident::NodeRef,
         headers: HeaderViewOwned,
         method: String,
         path: String,
@@ -290,9 +295,9 @@ impl Proxy {
         tokio::spawn(async move {
             if let (Some(store), Some(id)) = (capture.as_ref(), capture_id.as_ref()) {
                 let body = String::from_utf8_lossy(&buf).into_owned();
-                let (model, message_count, tool_calls) = raz_ledger::body_meta(&body);
-                let rec = raz_ledger::CaptureRecord {
-                    schema_version: raz_ledger::CAPTURE_SCHEMA,
+                let (model, message_count, tool_calls) = tailfin_ledger::body_meta(&body);
+                let rec = tailfin_ledger::CaptureRecord {
+                    schema_version: tailfin_ledger::CAPTURE_SCHEMA,
                     capture_id: id.clone(),
                     task_id: live.root.clone(),
                     node: live.node.clone(),
@@ -309,7 +314,7 @@ impl Proxy {
                     body,
                 };
                 if let Err(e) = store.save(&rec) {
-                    crate::log::log(format!("raz: capture write: {e}"));
+                    crate::log::log(format!("tailfin: capture write: {e}"));
                 }
             }
             let digest = messages_from_body(&buf).map(|m| PrefixDigest::from_messages(&m));
@@ -324,7 +329,7 @@ impl Proxy {
                 had_digest: digest.is_some(),
             };
             crate::log::log(format!(
-                "raz: shadow live_root={} shadow_root={} declared={} digest={} conf={:.2}",
+                "tailfin: shadow live_root={} shadow_root={} declared={} digest={} conf={:.2}",
                 cmp.live_root,
                 cmp.shadow_root,
                 cmp.declared,
@@ -344,7 +349,7 @@ impl Proxy {
         &self,
         mut rx: mpsc::Receiver<Bytes>,
         dialect: Option<Dialect>,
-        node: raz_ident::NodeRef,
+        node: tailfin_ident::NodeRef,
         capture_id: Option<String>,
     ) {
         let arena = self.arena.clone();
@@ -377,7 +382,7 @@ impl Proxy {
             };
             if frames > 0 {
                 crate::log::log(format!(
-                    "raz: teed {frames} frames / {bytes} bytes in={} out={} cache_read={} cache_5m={} cache_1h={} complete={complete}",
+                    "tailfin: teed {frames} frames / {bytes} bytes in={} out={} cache_read={} cache_5m={} cache_1h={} complete={complete}",
                     usage.input, usage.output, usage.cache_read, usage.cache_write_5m, usage.cache_write_1h
                 ));
             }
@@ -388,10 +393,10 @@ impl Proxy {
 
 fn finish_locked(
     arena: &Mutex<Arena>,
-    node: &raz_ident::NodeRef,
+    node: &tailfin_ident::NodeRef,
     usage: &Usage,
     complete: bool,
-    ledger: &Option<Arc<raz_ledger::Ledger>>,
+    ledger: &Option<Arc<tailfin_ledger::Ledger>>,
     capture_id: Option<String>,
 ) {
     let mut arena = arena.lock().unwrap_or_else(|e| e.into_inner());
@@ -406,15 +411,15 @@ fn finish_locked(
             .into_iter()
             .map(|(id, depth)| format!("{id}:{depth}"))
             .collect();
-        crate::log::log(format!("raz: tree {} [{}]", node.root, walk.join(" ")));
+        crate::log::log(format!("tailfin: tree {} [{}]", node.root, walk.join(" ")));
     }
     if let Some(led) = ledger {
-        let mut rec = raz_ledger::Record::from_finish(node, usage, !complete, peak);
+        let mut rec = tailfin_ledger::Record::from_finish(node, usage, !complete, peak);
         if let Some(id) = capture_id {
             rec = rec.with_capture_id(id);
         }
         if let Err(e) = led.append(&rec) {
-            crate::log::log(format!("raz: ledger write: {e}"));
+            crate::log::log(format!("tailfin: ledger write: {e}"));
         }
     }
 }
@@ -430,7 +435,7 @@ impl HeaderViewOwned {
     }
 }
 
-impl raz_ident::Headers for HeaderViewOwned {
+impl tailfin_ident::Headers for HeaderViewOwned {
     fn get(&self, name: &str) -> Option<&str> {
         self.inner.get(name).and_then(|v| v.to_str().ok())
     }
@@ -455,7 +460,7 @@ fn rewrite_uri(upstream: &Uri, req_uri: &Uri) -> Result<Uri, BoxError> {
 }
 
 const SYNTHETIC_MARK: &str =
-    "[raz] task ceiling reached; this turn was ended by the flight recorder.";
+    "[tailfin] task ceiling reached; this turn was ended by the flight recorder.";
 
 fn boxed_full(b: Bytes) -> RelayBody {
     Full::new(b)
@@ -466,9 +471,10 @@ fn boxed_full(b: Bytes) -> RelayBody {
 fn stop_response(style: StopStyle, headers: &hyper::HeaderMap) -> Response<RelayBody> {
     match style {
         StopStyle::SyntheticEndTurn => {
-            let text = serde_json::to_string(SYNTHETIC_MARK).unwrap_or_else(|_| "\"[raz]\"".into());
+            let text =
+                serde_json::to_string(SYNTHETIC_MARK).unwrap_or_else(|_| "\"[tailfin]\"".into());
             let body = format!(
-                "event: message_start\ndata: {{\"type\":\"message_start\",\"message\":{{\"id\":\"raz_stop\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"raz\"}}}}\n\n\
+                "event: message_start\ndata: {{\"type\":\"message_start\",\"message\":{{\"id\":\"tailfin_stop\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"tailfin\"}}}}\n\n\
 event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{{\"type\":\"text\",\"text\":\"\"}}}}\n\n\
 event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"text_delta\",\"text\":{text}}}}}\n\n\
 event: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":0}}\n\n\
@@ -481,8 +487,10 @@ event: message_stop\ndata: {{\"type\":\"message_stop\"}}\n\n"
                 hyper::header::CONTENT_TYPE,
                 HeaderValue::from_static("text/event-stream"),
             );
-            resp.headers_mut()
-                .insert("x-raz-stop", HeaderValue::from_static("synthetic-end-turn"));
+            resp.headers_mut().insert(
+                "x-tailfin-stop",
+                HeaderValue::from_static("synthetic-end-turn"),
+            );
             resp
         }
         StopStyle::RetryableFalse429 | StopStyle::PaymentRequired402 => {
@@ -493,7 +501,7 @@ event: message_stop\ndata: {{\"type\":\"message_stop\"}}\n\n"
                 (StatusCode::PAYMENT_REQUIRED, "402")
             };
             let mut resp = Response::new(boxed_full(Bytes::from_static(
-                b"{\"error\":\"raz ceiling\"}\n",
+                b"{\"error\":\"tailfin ceiling\"}\n",
             )));
             *resp.status_mut() = status;
             if status == StatusCode::TOO_MANY_REQUESTS {
@@ -501,7 +509,7 @@ event: message_stop\ndata: {{\"type\":\"message_stop\"}}\n\n"
                     .insert("x-should-retry", HeaderValue::from_static("false"));
             }
             resp.headers_mut()
-                .insert("x-raz-stop", HeaderValue::from_static(kind));
+                .insert("x-tailfin-stop", HeaderValue::from_static(kind));
             resp
         }
     }

@@ -34,12 +34,12 @@ jobs:
         with:
           key: ${{ matrix.target }}
       - name: build
-        run: cargo build -p raz-cli --release --locked --target ${{ matrix.target }}
+        run: cargo build -p tailfin --release --locked --target ${{ matrix.target }}
       - name: pack
-        run: bash scripts/pack-release.sh "target/${{ matrix.target }}/release/raz" "${{ matrix.target }}"
+        run: bash scripts/pack-release.sh "target/${{ matrix.target }}/release/tailfin" "${{ matrix.target }}"
       - uses: actions/upload-artifact@v7
         with:
-          name: raz-${{ matrix.target }}
+          name: tailfin-${{ matrix.target }}
           path: dist/
           if-no-files-found: error
 
@@ -56,7 +56,7 @@ jobs:
       - name: stage assets
         run: |
           mkdir -p dist
-          find artifacts -type f \( -name 'raz-*.tar.gz' -o -name 'raz-*.sha256' \) -exec cp {} dist/ \;
+          find artifacts -type f \( -name 'tailfin-*.tar.gz' -o -name 'tailfin-*.sha256' \) -exec cp {} dist/ \;
           cat dist/*.sha256 | sort > dist/SHA256SUMS
           cp install.sh dist/install.sh
           ls -la dist
@@ -71,20 +71,20 @@ jobs:
             echo "Prebuilt binary. You do not compile."
             echo
             echo '```sh'
-            echo "curl -fsSL https://github.com/hexuria/raz/releases/latest/download/install.sh | bash"
+            echo "curl -fsSL https://github.com/codeitlikemiley/tailfin/releases/latest/download/install.sh | bash"
             echo '```'
             echo
             echo "Or pin this tag:"
             echo
             echo '```sh'
-            echo "curl -fsSL https://github.com/hexuria/raz/releases/download/${tag}/install.sh | RAZ_VERSION=${tag} bash"
+            echo "curl -fsSL https://github.com/codeitlikemiley/tailfin/releases/download/${tag}/install.sh | TAILFIN_VERSION=${tag} bash"
             echo '```'
             echo
             echo "Homebrew:"
             echo
             echo '```sh'
-            echo "brew tap hexuria/raz https://github.com/hexuria/raz"
-            echo "brew install raz"
+            echo "brew tap codeitlikemiley/tailfin https://github.com/codeitlikemiley/tailfin"
+            echo "brew install tailfin"
             echo '```'
             echo
             echo "Checksums are in \`SHA256SUMS\`. macOS arm64/x64 and Linux x64 only — no Windows build."
@@ -94,12 +94,12 @@ jobs:
           generate_release_notes: true
           body_path: release-notes.md
           files: |
-            dist/raz-aarch64-apple-darwin.tar.gz
-            dist/raz-aarch64-apple-darwin.tar.gz.sha256
-            dist/raz-x86_64-apple-darwin.tar.gz
-            dist/raz-x86_64-apple-darwin.tar.gz.sha256
-            dist/raz-x86_64-unknown-linux-gnu.tar.gz
-            dist/raz-x86_64-unknown-linux-gnu.tar.gz.sha256
+            dist/tailfin-aarch64-apple-darwin.tar.gz
+            dist/tailfin-aarch64-apple-darwin.tar.gz.sha256
+            dist/tailfin-x86_64-apple-darwin.tar.gz
+            dist/tailfin-x86_64-apple-darwin.tar.gz.sha256
+            dist/tailfin-x86_64-unknown-linux-gnu.tar.gz
+            dist/tailfin-x86_64-unknown-linux-gnu.tar.gz.sha256
             dist/SHA256SUMS
             dist/install.sh
         env:

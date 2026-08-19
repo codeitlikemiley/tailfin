@@ -1,7 +1,7 @@
 use hyper::header::HeaderMap;
-use raz_ident::Headers;
+use tailfin_ident::Headers;
 
-/// Borrowed view so raz-ident stays free of HTTP types.
+/// Borrowed view so tailfin-ident stays free of HTTP types.
 pub struct HeaderView<'a>(pub &'a HeaderMap);
 
 impl Headers for HeaderView<'_> {
@@ -41,7 +41,7 @@ fn canonical_message(m: &serde_json::Value) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use raz_ident::PrefixDigest;
+    use tailfin_ident::PrefixDigest;
 
     #[test]
     fn messages_from_body_reads_anthropic_shape() {

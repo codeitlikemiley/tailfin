@@ -415,35 +415,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "raz-cli"
+name = "tailfin"
 version = "0.1.0"
 dependencies = [
  "clap",
- "raz-ledger",
- "raz-proxy",
- "raz-wire",
+ "tailfin-ledger",
+ "tailfin-proxy",
+ "tailfin-wire",
  "serde",
  "tokio",
  "toml",
 ]
 
 [[package]]
-name = "raz-ident"
+name = "tailfin-ident"
 version = "0.1.0"
 
 [[package]]
-name = "raz-ledger"
+name = "tailfin-ledger"
 version = "0.1.0"
 dependencies = [
- "raz-ident",
- "raz-tree",
- "raz-wire",
+ "tailfin-ident",
+ "tailfin-tree",
+ "tailfin-wire",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "raz-proxy"
+name = "tailfin-proxy"
 version = "0.1.0"
 dependencies = [
  "bytes",
@@ -452,25 +452,25 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "pin-project-lite",
- "raz-ident",
- "raz-ledger",
- "raz-tree",
- "raz-wire",
+ "tailfin-ident",
+ "tailfin-ledger",
+ "tailfin-tree",
+ "tailfin-wire",
  "rustls",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "raz-tree"
+name = "tailfin-tree"
 version = "0.1.0"
 dependencies = [
- "raz-ident",
- "raz-wire",
+ "tailfin-ident",
+ "tailfin-wire",
 ]
 
 [[package]]
-name = "raz-wire"
+name = "tailfin-wire"
 version = "0.1.0"
 dependencies = [
  "serde_json",

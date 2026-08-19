@@ -168,8 +168,8 @@ impl CaptureStore {
 
 pub fn default_capture_dir(ledger: &Path) -> PathBuf {
     match ledger.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.join("raz-capture"),
-        _ => PathBuf::from("raz-capture"),
+        Some(p) if !p.as_os_str().is_empty() => p.join("tailfin-capture"),
+        _ => PathBuf::from("tailfin-capture"),
     }
 }
 
@@ -201,7 +201,7 @@ mod tests {
     fn tmp() -> PathBuf {
         static N: AtomicU64 = AtomicU64::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let p = std::env::temp_dir().join(format!("raz-cap-{}-{n}", std::process::id()));
+        let p = std::env::temp_dir().join(format!("tailfin-cap-{}-{n}", std::process::id()));
         let _ = fs::remove_dir_all(&p);
         p
     }
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn missing_dir_loads_empty() {
-        let p = std::env::temp_dir().join("raz-cap-missing-hopefully");
+        let p = std::env::temp_dir().join("tailfin-cap-missing-hopefully");
         let _ = fs::remove_dir_all(&p);
         let store = CaptureStore {
             dir: p,

@@ -60,7 +60,7 @@ pub struct Config {
 }
 
 impl Config {
-    /// Flags override env. `RAZ_LISTEN` / `--listen`, `RAZ_UPSTREAM` / `--upstream`.
+    /// Flags override env. `TAILFIN_LISTEN` / `--listen`, `TAILFIN_UPSTREAM` / `--upstream`.
     pub fn parse(
         args: impl IntoIterator<Item = impl AsRef<str>>,
         listen_env: Option<&str>,
@@ -94,7 +94,7 @@ impl Config {
         }
         let Some(upstream) = upstream else {
             return Err(Error::Config(
-                "upstream required (--upstream or RAZ_UPSTREAM)".into(),
+                "upstream required (--upstream or TAILFIN_UPSTREAM)".into(),
             ));
         };
         let listen: SocketAddr = listen
@@ -121,13 +121,13 @@ mod tests {
     use hyper::{Method, Request, Response, StatusCode};
     use hyper_util::client::legacy::Client;
     use hyper_util::rt::{TokioExecutor, TokioIo};
-    use raz_ledger::{CaptureStore, Ledger, DEFAULT_RETENTION};
-    use raz_wire::Usage;
     use std::convert::Infallible;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll};
     use std::time::Duration;
+    use tailfin_ledger::{CaptureStore, Ledger, DEFAULT_RETENTION};
+    use tailfin_wire::Usage;
     use tokio::net::TcpListener;
     use tokio::sync::{mpsc, oneshot, Notify};
 
@@ -1195,7 +1195,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn finish_appends_a_schema_versioned_ledger_record() {
         let path =
-            std::env::temp_dir().join(format!("raz-proxy-led-{}-.jsonl", std::process::id()));
+            std::env::temp_dir().join(format!("tailfin-proxy-led-{}-.jsonl", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let stub = spawn_http_server(|_req| async move {
             Response::builder()
@@ -1234,7 +1234,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn capture_off_stores_no_bodies() {
-        let cap = std::env::temp_dir().join(format!("raz-cap-off-{}", std::process::id()));
+        let cap = std::env::temp_dir().join(format!("tailfin-cap-off-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cap);
         let stub = spawn_http_server(|_req| async move {
             Response::builder()
@@ -1265,8 +1265,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn capture_on_stores_request_body_with_schema() {
-        let cap = std::env::temp_dir().join(format!("raz-cap-on-{}", std::process::id()));
-        let led = std::env::temp_dir().join(format!("raz-cap-on-{}-.jsonl", std::process::id()));
+        let cap = std::env::temp_dir().join(format!("tailfin-cap-on-{}", std::process::id()));
+        let led =
+            std::env::temp_dir().join(format!("tailfin-cap-on-{}-.jsonl", std::process::id()));
         let _ = std::fs::remove_dir_all(&cap);
         let _ = std::fs::remove_file(&led);
         let store = Arc::new(CaptureStore::open(&cap, DEFAULT_RETENTION).unwrap());
@@ -1301,7 +1302,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(80)).await;
         let got = store.load_all().unwrap();
         assert_eq!(got.len(), 1, "one captured request");
-        assert_eq!(got[0].schema_version, raz_ledger::CAPTURE_SCHEMA);
+        assert_eq!(got[0].schema_version, tailfin_ledger::CAPTURE_SCHEMA);
         assert!(got[0].body.contains("hello-capture"), "{}", got[0].body);
         assert_eq!(got[0].path, "/v1/messages");
         let recs = Ledger::read_all(&led).unwrap();
@@ -1325,7 +1326,7 @@ mod tests {
             }
         })
         .await;
-        let rates = raz_wire::RateCard::from_base(15_000_000, 75_000_000);
+        let rates = tailfin_wire::RateCard::from_base(15_000_000, 75_000_000);
         let (addr, shutdown, handle, _) =
             spawn_proxy_cfg(stub, move |p| p.with_budget(0, rates, None)).await;
         let h = claude_headers("sess-fuse", None, None);
@@ -1336,13 +1337,13 @@ mod tests {
         let second = send(addr, Method::POST, "/v1/messages", h.clone(), b.clone()).await;
         let body = String::from_utf8_lossy(&second.body);
         assert!(
-            body.contains("end_turn") && body.contains("[raz]"),
+            body.contains("end_turn") && body.contains("[tailfin]"),
             "{body}"
         );
         assert_eq!(
             second
                 .headers
-                .get("x-raz-stop")
+                .get("x-tailfin-stop")
                 .and_then(|v| v.to_str().ok()),
             Some("synthetic-end-turn")
         );

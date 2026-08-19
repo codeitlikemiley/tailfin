@@ -1,18 +1,18 @@
-# raz roadmap — v0.1 = observe only
+# tailfin roadmap — v0.1 = observe only
 
 Gate = the sentence that must be true before the milestone is ticked.
 
 ## M0 — bootstrap  `[x]`
-- [x] extracted, renamed arbor→raz, 42 tests green, clippy clean
+- [x] extracted arbor workspace; renamed arbor→raz then raz→tailfin; tests green, clippy clean
 - [x] git repo with initial commit; CLAUDE.md, ROADMAP.md, JOURNAL.md committed
 Gate: `cargo test --workspace` → 42 passing on a clean clone.
 
-## M1 — proxy skeleton (raz-proxy)
+## M1 — proxy skeleton (tailfin-proxy)
 - [x] hyper server on 127.0.0.1:7171, tokio, graceful shutdown
 - [x] forwards method/path/headers/body to a configurable upstream base URL
 - [x] hop-by-hop headers handled correctly; everything else byte-identical
 - [x] non-streaming JSON round-trip works against a stub upstream (test)
-Gate: a curl of a non-streaming completion through raz is byte-identical to direct.
+Gate: a curl of a non-streaming completion through tailfin is byte-identical to direct.
 
 ## M2 — streaming fidelity
 - [x] SSE responses relayed unbuffered, eager flush
@@ -20,11 +20,11 @@ Gate: a curl of a non-streaming completion through raz is byte-identical to dire
       counts for now
 - [x] kill-the-meter test: metering task aborted mid-stream, client still gets a
       complete response
-- [x] REAL-AGENT GATE: a full interactive Claude Code session through raz —
+- [x] REAL-AGENT GATE: a full interactive Claude Code session through tailfin —
       streaming, tool use, a subagent spawn — with no visible behaviour change
 Gate: the real-agent session, plus the kill-the-meter test, both pass.
 
-## M3 — identity wiring (raz-ident into the proxy)
+## M3 — identity wiring (tailfin-ident into the proxy)
 - [x] resolve NodeRef per request: declared headers first (Claude Code, Codex)
 - [x] prefix digest computed from request bodies but used in shadow mode only:
       logged, compared against declared identity, never yet authoritative
@@ -32,7 +32,7 @@ Gate: the real-agent session, plus the kill-the-meter test, both pass.
 Gate: a session with subagents produces a correct tree (subagents attached to the
 right parent), verified against the transcript on disk.
 
-## M4 — metering (raz-wire into the tee)
+## M4 — metering (tailfin-wire into the tee)
 - [x] SseDecoder + Meter consume teed frames; usage merged into the arena node
 - [x] both dialects: Anthropic /v1/messages and OpenAI /chat/completions
 - [x] incomplete streams marked, counted, reported
@@ -40,16 +40,16 @@ right parent), verified against the transcript on disk.
       session (cache tiers compared separately)
 Gate: the cross-check on a real session.
 
-## M5 — ledger + report (raz-ledger, raz-cli)
+## M5 — ledger + report (tailfin-ledger, tailfin)
 - [x] append-only JSONL ledger: one record per request finish, includes NodeRef,
       usage, confidence, incomplete flag
-- [x] `raz run` (foreground proxy) and `raz report` (reads ledger)
+- [x] `tailfin run` (foreground proxy) and `tailfin report` (reads ledger)
 - [x] report prints: total, main vs subagent split, fan-out multiplier, per-node
       table ranked by cost, peak concurrency, cache read:write ratio, incomplete count
 - [x] rate card loaded from a TOML file; missing card = token-only report, no dollars
 - [x] ledger records carry schema_version + stable task id; --capture flag
       reserved (parses, prints "capture lands in M8", stores nothing)
-Gate: `raz report` on a real fan-out session prints the table and the numbers
+Gate: `tailfin report` on a real fan-out session prints the table and the numbers
 reconcile with M4's cross-check.
 
 ## M6 — release engineering
@@ -59,13 +59,13 @@ reconcile with M4's cross-check.
 - [x] README rewritten around the finding, not the tool; includes the honest-ceiling
       and subscription-auth caveats verbatim from CLAUDE.md
 Gate: on a machine (or clean VM/container) without Rust, install script → working
-`raz` in under a minute.
+`tailfin` in under a minute.
 
 ## M7 — launch pack  `[x]`
-- [ ] run raz on your own real work for 2+ days; capture your own fan-out numbers
+- [ ] run tailfin on your own real work for 2+ days; capture your own fan-out numbers
 - [x] launch post drafted: number in the title, comparative framing, tool in
       paragraph two; draft lives in docs/launch.md
-- [x] `raz report --share` produces a paste-ready table with no identifying paths
+- [x] `tailfin report --share` produces a paste-ready table with no identifying paths
 Gate: docs/launch.md approved 2026-08-20. 2-day dogfood still open (honest; not faked).
 
 ## Post-v0.1 — the endgame ladder (docs/endgame.md). M7 gate passed 2026-08-20.
@@ -78,7 +78,7 @@ above depends on it.
 ## M8 — shadow replay (endgame L2)
 - [x] `--capture` mode: full request bodies stored locally, opt-in, off by default,
       retention knob, schema versioned  *(skip if already done as part of M5)*
-- [x] `raz replay --sample N --models a,b [--since 7d]` resubmits captured tasks via
+- [x] `tailfin replay --sample N --models a,b [--since 7d]` resubmits captured tasks via
       provider batch APIs under the user's own keys, never on the interactive path
       *(live batch uses StubBatch until keys+a week of captures exist)*
 - [x] scoring: native checks first (tests pass / compiles / diff applies); judge
@@ -108,15 +108,15 @@ second `/v1/messages` after the overshoot.
 Gate: BLOCKED: aider/opencode live session with zero declared headers not run here.
 
 ## M11 — cost stamps (endgame L4)
-- [x] `raz stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,
+- [x] `tailfin stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,
       incomplete count, identity confidence; opt-in per repo
-- [x] `raz blame`: per-hunk cost rendering
+- [x] `tailfin blame`: per-hunk cost rendering
 - [x] stamps are one line collapsed, expandable; no stamp without `--capture`-grade
       attribution confidence
 Gate: BLOCKED: a published PR with a stamp a reviewer understands — not produced here.
 
 ## M12 — doctor (conflict detector)
-- [x] `raz doctor` reads a LiteLLM/gateway config and reports: budget-fallback chains
+- [x] `tailfin doctor` reads a LiteLLM/gateway config and reports: budget-fallback chains
       with no tier floor; compression ratios that evict prefixes from the persistent
       cache tier; memory-inject feeding compression-strip
 - [x] every rule cites its published measurement in the output
@@ -124,7 +124,7 @@ Gate: BLOCKED: a production LiteLLM file from a public repo — fixture
 testdata/gateway-litellm.yaml is what we ran.
 
 ## Parked — endgame L5 (actuarial layer)
-Do not build. No telemetry or sharing code exists in this repository until raz is
+Do not build. No telemetry or sharing code exists in this repository until tailfin is
 established infrastructure AND an explicit opt-in design has been written, reviewed,
 and approved by the human. This paragraph is the permission gate; its removal is a
 human-only act.

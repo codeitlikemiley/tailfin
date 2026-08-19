@@ -1,10 +1,11 @@
 [package]
-name = "raz-tree"
+name = "tailfin-tree"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Task tree arena with live cost roll-up"
 
 [dependencies]
-raz-ident = { path = "../raz-ident" }
-raz-wire  = { path = "../raz-wire" }
+tailfin-ident = { path = "../tailfin-ident" }
+tailfin-wire  = { path = "../tailfin-wire" }

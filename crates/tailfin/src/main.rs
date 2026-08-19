@@ -1,17 +1,17 @@
 use clap::{Parser, Subcommand};
-use raz_ledger::{
-    default_capture_dir, parse_retention, replay, CaptureStore, Ledger, ReplayOpts, StubBatch,
-    DEFAULT_RETENTION,
-};
-use raz_proxy::{serve, Config, Proxy};
-use raz_wire::RateCard;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tailfin_ledger::{
+    default_capture_dir, parse_retention, replay, CaptureStore, Ledger, ReplayOpts, StubBatch,
+    DEFAULT_RETENTION,
+};
+use tailfin_proxy::{serve, Config, Proxy};
+use tailfin_wire::RateCard;
 use tokio::net::TcpListener;
 
 #[derive(Parser)]
-#[command(name = "raz", about = "Flight recorder for AI agents")]
+#[command(name = "tailfin", about = "Flight recorder for AI agents")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -25,7 +25,7 @@ enum Cmd {
     Report(ReportArgs),
     /// Replay captured tasks via a batch sink (never the interactive proxy).
     Replay(ReplayArgs),
-    /// Write a one-line Raz-Cost git trailer/note (capture-grade identity only).
+    /// Write a one-line Tailfin-Cost git trailer/note (capture-grade identity only).
     Stamp(StampArgs),
     /// Per-node cost as hunk-shaped rows.
     Blame(BlameArgs),
@@ -35,11 +35,14 @@ enum Cmd {
 
 #[derive(clap::Args)]
 struct RunArgs {
-    #[arg(long, env = "RAZ_LISTEN", default_value = "127.0.0.1:7171")]
+    /// Bind address.
+    #[arg(long, env = "TAILFIN_LISTEN", default_value = "127.0.0.1:7171")]
     listen: SocketAddr,
-    #[arg(long, env = "RAZ_UPSTREAM")]
+    /// Provider base URL (e.g. https://api.anthropic.com).
+    #[arg(long, env = "TAILFIN_UPSTREAM")]
     upstream: String,
-    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    /// JSONL ledger path.
+    #[arg(long, env = "TAILFIN_LEDGER", default_value = "tailfin.jsonl")]
     ledger: PathBuf,
     /// Store full request bodies locally (off by default).
     #[arg(long)]
@@ -47,7 +50,7 @@ struct RunArgs {
     /// How long to keep captured bodies (e.g. 7d, 24h).
     #[arg(long, default_value = "7d")]
     retention: String,
-    /// Directory for captured bodies. Default: raz-capture next to the ledger.
+    /// Directory for captured bodies. Default: tailfin-capture next to the ledger.
     #[arg(long)]
     capture_dir: Option<PathBuf>,
     /// Per-task ceiling in dollars. Requires `--rates`. Honest to within one
@@ -57,12 +60,14 @@ struct RunArgs {
     /// Fraction of a parent's remaining ceiling minted to each new subagent (e.g. 30%).
     #[arg(long)]
     subagent_share: Option<String>,
+    /// TOML rate card (µ$ per token). Without it, reports are token-only.
     #[arg(long)]
     rates: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
 struct ReplayArgs {
+    /// Max captured tasks to resubmit.
     #[arg(long, default_value_t = 20)]
     sample: usize,
     /// Comma-separated model ids to resubmit against.
@@ -71,8 +76,10 @@ struct ReplayArgs {
     /// Only tasks newer than this window (e.g. 7d).
     #[arg(long)]
     since: Option<String>,
-    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    /// JSONL ledger path (used to locate the default capture dir).
+    #[arg(long, env = "TAILFIN_LEDGER", default_value = "tailfin.jsonl")]
     ledger: PathBuf,
+    /// Directory of captured request bodies.
     #[arg(long)]
     capture_dir: Option<PathBuf>,
     /// Force the in-process stub batch (no provider, not the interactive proxy).
@@ -85,16 +92,20 @@ struct StampArgs {
     /// Git ref to note (default HEAD). Printed if git notes fails.
     #[arg(default_value = "HEAD")]
     git_ref: String,
-    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    /// JSONL ledger path.
+    #[arg(long, env = "TAILFIN_LEDGER", default_value = "tailfin.jsonl")]
     ledger: PathBuf,
+    /// TOML rate card (µ$ per token). Without it, the stamp is token-only.
     #[arg(long)]
     rates: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
 struct BlameArgs {
-    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    /// JSONL ledger path.
+    #[arg(long, env = "TAILFIN_LEDGER", default_value = "tailfin.jsonl")]
     ledger: PathBuf,
+    /// TOML rate card (µ$ per token). Without it, blame is token-only.
     #[arg(long)]
     rates: Option<PathBuf>,
 }
@@ -107,8 +118,10 @@ struct DoctorArgs {
 
 #[derive(clap::Args)]
 struct ReportArgs {
-    #[arg(long, env = "RAZ_LEDGER", default_value = "raz.jsonl")]
+    /// JSONL ledger path.
+    #[arg(long, env = "TAILFIN_LEDGER", default_value = "tailfin.jsonl")]
     ledger: PathBuf,
+    /// TOML rate card (µ$ per token). Without it, the report is token-only.
     #[arg(long)]
     rates: Option<PathBuf>,
     /// Paste-ready table: no paths, no session or node ids.
@@ -119,7 +132,7 @@ struct ReportArgs {
 #[tokio::main]
 async fn main() {
     if let Err(e) = go().await {
-        eprintln!("raz: {e}");
+        eprintln!("tailfin: {e}");
         std::process::exit(1);
     }
 }
@@ -158,7 +171,7 @@ async fn run(args: RunArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
             .parse()
             .map_err(|e| format!("upstream: {e}"))?,
     };
-    raz_proxy::init_log();
+    tailfin_proxy::init_log();
     let ledger = Ledger::open(&args.ledger)?;
     let mut proxy = Proxy::new(cfg.upstream.clone())?.with_ledger(Arc::new(ledger));
     if let Some(dollars) = args.max_per_task {
@@ -173,7 +186,7 @@ async fn run(args: RunArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
             None => None,
         };
         eprintln!(
-            "raz ceiling ${dollars:.4} ({} µ$) share {:?}",
+            "tailfin ceiling ${dollars:.4} ({} µ$) share {:?}",
             micros, share
         );
         proxy = proxy.with_budget(micros, rates, share);
@@ -186,7 +199,7 @@ async fn run(args: RunArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
         let store = CaptureStore::open(&dir, retention)?;
         let pruned = store.prune().unwrap_or(0);
         eprintln!(
-            "raz capture on → {} (retention {}, pruned {pruned})",
+            "tailfin capture on → {} (retention {}, pruned {pruned})",
             dir.display(),
             args.retention
         );
@@ -195,7 +208,7 @@ async fn run(args: RunArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
     let listener = TcpListener::bind(cfg.listen).await?;
     let bound = listener.local_addr()?;
     eprintln!(
-        "raz listening on http://{bound} → {} (ledger {})",
+        "tailfin listening on http://{bound} → {} (ledger {})",
         cfg.upstream,
         args.ledger.display()
     );
@@ -212,7 +225,7 @@ fn report(args: ReportArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
     };
     print!(
         "{}",
-        raz_ledger::render(&records, rates.as_ref(), args.share)
+        tailfin_ledger::render(&records, rates.as_ref(), args.share)
     );
     Ok(())
 }
@@ -249,12 +262,12 @@ fn replay_cmd(args: ReplayArgs) -> Result<(), Box<dyn std::error::Error + Send +
     // never the interactive listener.
     let _ = args.stub;
     if std::env::var_os("ANTHROPIC_API_KEY").is_none() {
-        eprintln!("raz replay: no ANTHROPIC_API_KEY; stub batch (not a live week of tasks)");
+        eprintln!("tailfin replay: no ANTHROPIC_API_KEY; stub batch (not a live week of tasks)");
     } else {
-        eprintln!("raz replay: live batch not wired; stub batch (calendar gate stays open)");
+        eprintln!("tailfin replay: live batch not wired; stub batch (calendar gate stays open)");
     }
     let rows = replay(&recs, &opts, &StubBatch::default());
-    print!("{}", raz_ledger::render_table(&rows));
+    print!("{}", tailfin_ledger::render_table(&rows));
     Ok(())
 }
 
@@ -264,14 +277,14 @@ fn stamp_cmd(args: StampArgs) -> Result<(), Box<dyn std::error::Error + Send + S
         Some(p) => Some(load_rates(&p)?),
         None => None,
     };
-    let line = raz_ledger::format_stamp(&records, rates.as_ref())?;
+    let line = tailfin_ledger::format_stamp(&records, rates.as_ref())?;
     println!("{line}");
     let git = std::process::Command::new("git")
         .args(["notes", "add", "-f", "-m", &line, &args.git_ref])
         .status();
     match git {
-        Ok(s) if s.success() => eprintln!("raz stamp: noted {}", args.git_ref),
-        _ => eprintln!("raz stamp: printed only (git notes unavailable)"),
+        Ok(s) if s.success() => eprintln!("tailfin stamp: noted {}", args.git_ref),
+        _ => eprintln!("tailfin stamp: printed only (git notes unavailable)"),
     }
     Ok(())
 }
@@ -282,13 +295,16 @@ fn blame_cmd(args: BlameArgs) -> Result<(), Box<dyn std::error::Error + Send + S
         Some(p) => Some(load_rates(&p)?),
         None => None,
     };
-    print!("{}", raz_ledger::format_blame(&records, rates.as_ref()));
+    print!("{}", tailfin_ledger::format_blame(&records, rates.as_ref()));
     Ok(())
 }
 
 fn doctor_cmd(args: DoctorArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let raw = std::fs::read_to_string(&args.config)?;
-    print!("{}", raz_ledger::render_doctor(&raz_ledger::diagnose(&raw)));
+    print!(
+        "{}",
+        tailfin_ledger::render_doctor(&tailfin_ledger::diagnose(&raw))
+    );
     Ok(())
 }
 
@@ -357,7 +373,8 @@ mod tests {
 
     #[test]
     fn report_share_flag_parses() {
-        let cli = Cli::try_parse_from(["raz", "report", "--share", "--ledger", "x.jsonl"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["tailfin", "report", "--share", "--ledger", "x.jsonl"]).unwrap();
         match cli.cmd {
             Cmd::Report(a) => {
                 assert!(a.share);
@@ -369,7 +386,7 @@ mod tests {
 
     #[test]
     fn report_without_share_defaults_off() {
-        let cli = Cli::try_parse_from(["raz", "report"]).unwrap();
+        let cli = Cli::try_parse_from(["tailfin", "report"]).unwrap();
         match cli.cmd {
             Cmd::Report(a) => assert!(!a.share),
             _ => panic!("expected report"),
@@ -379,7 +396,8 @@ mod tests {
     #[test]
     fn run_capture_defaults_off() {
         let cli =
-            Cli::try_parse_from(["raz", "run", "--upstream", "https://api.anthropic.com"]).unwrap();
+            Cli::try_parse_from(["tailfin", "run", "--upstream", "https://api.anthropic.com"])
+                .unwrap();
         match cli.cmd {
             Cmd::Run(a) => assert!(!a.capture),
             _ => panic!("expected run"),
@@ -389,7 +407,7 @@ mod tests {
     #[test]
     fn run_max_per_task_parses() {
         let cli = Cli::try_parse_from([
-            "raz",
+            "tailfin",
             "run",
             "--upstream",
             "https://api.anthropic.com",
@@ -419,7 +437,7 @@ mod tests {
 
     #[test]
     fn doctor_parses() {
-        let cli = Cli::try_parse_from(["raz", "doctor", "cfg.yaml"]).unwrap();
+        let cli = Cli::try_parse_from(["tailfin", "doctor", "cfg.yaml"]).unwrap();
         match cli.cmd {
             Cmd::Doctor(a) => assert_eq!(a.config, PathBuf::from("cfg.yaml")),
             _ => panic!("doctor"),
@@ -428,12 +446,12 @@ mod tests {
 
     #[test]
     fn stamp_and_blame_parse() {
-        let s = Cli::try_parse_from(["raz", "stamp", "HEAD", "--ledger", "x.jsonl"]).unwrap();
+        let s = Cli::try_parse_from(["tailfin", "stamp", "HEAD", "--ledger", "x.jsonl"]).unwrap();
         match s.cmd {
             Cmd::Stamp(a) => assert_eq!(a.git_ref, "HEAD"),
             _ => panic!("stamp"),
         }
-        let b = Cli::try_parse_from(["raz", "blame", "--ledger", "x.jsonl"]).unwrap();
+        let b = Cli::try_parse_from(["tailfin", "blame", "--ledger", "x.jsonl"]).unwrap();
         match b.cmd {
             Cmd::Blame(a) => assert_eq!(a.ledger, PathBuf::from("x.jsonl")),
             _ => panic!("blame"),
@@ -443,7 +461,7 @@ mod tests {
     #[test]
     fn replay_flag_parses_sample_and_models() {
         let cli = Cli::try_parse_from([
-            "raz",
+            "tailfin",
             "replay",
             "--sample",
             "3",

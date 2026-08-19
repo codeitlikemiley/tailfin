@@ -11,8 +11,8 @@
 
 #![forbid(unsafe_code)]
 
-use raz_ident::NodeRef;
-use raz_wire::{RateCard, Usage};
+use tailfin_ident::NodeRef;
+use tailfin_wire::{RateCard, Usage};
 use std::collections::HashMap;
 
 /// Outcome of admitting a request against a task's ceiling.
@@ -489,7 +489,7 @@ impl Arena {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use raz_ident::IdentitySource;
+    use tailfin_ident::IdentitySource;
 
     fn rates() -> RateCard {
         RateCard::from_base(15_000_000, 75_000_000)

@@ -1,6 +1,7 @@
 [package]
-name = "raz-ident"
+name = "tailfin-ident"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Task identity inference from LLM wire traffic"

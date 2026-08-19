@@ -28,7 +28,7 @@ pub async fn serve(
                 let (stream, _) = match result {
                     Ok(s) => s,
                     Err(e) => {
-                        crate::log::log(format!("raz: accept error: {e}"));
+                        crate::log::log(format!("tailfin: accept error: {e}"));
                         continue;
                     }
                 };
@@ -51,7 +51,7 @@ pub async fn serve(
                         {
                             return;
                         }
-                        crate::log::log(format!("raz: connection error: {e}"));
+                        crate::log::log(format!("tailfin: connection error: {e}"));
                     }
                 });
             }
