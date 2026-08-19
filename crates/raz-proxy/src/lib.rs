@@ -1063,4 +1063,66 @@ mod tests {
         shutdown.send(()).ok();
         handle.await.unwrap();
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn anthropic_sse_on_an_unknown_path_is_still_metered() {
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/sessions/abc/events/stream",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        let u = wait_usage(&proxy, "sess-1", |u, _| u.output == 250).await;
+        assert_eq!(u.input, 12);
+        assert_eq!(u.cache_read, 6000);
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn accept_encoding_is_not_forwarded() {
+        let seen: Arc<Mutex<Option<HeaderMap>>> = Arc::new(Mutex::new(None));
+        let stub = spawn_http_server({
+            let seen = seen.clone();
+            move |req| {
+                let seen = seen.clone();
+                async move {
+                    *seen.lock().unwrap() = Some(req.headers().clone());
+                    Response::new(Full::new(Bytes::from_static(b"{}")))
+                }
+            }
+        })
+        .await;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "accept-encoding",
+            HeaderValue::from_static("gzip, deflate, br"),
+        );
+        let (proxy_addr, shutdown, handle) = spawn_proxy(stub).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            headers,
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        let got = seen.lock().unwrap().clone().expect("headers");
+        assert!(
+            got.get("accept-encoding").is_none(),
+            "gzip would hide SSE from the tee"
+        );
+    }
 }

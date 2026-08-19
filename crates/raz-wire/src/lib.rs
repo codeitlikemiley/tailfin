@@ -160,10 +160,13 @@ pub enum Dialect {
 
 impl Dialect {
     pub fn for_path(path: &str) -> Option<Self> {
-        match path {
-            p if p.ends_with("/v1/messages") => Some(Self::AnthropicMessages),
-            p if p.ends_with("/chat/completions") => Some(Self::OpenAiChat),
-            _ => None,
+        let p = path.trim_end_matches('/');
+        if p.ends_with("/chat/completions") {
+            Some(Self::OpenAiChat)
+        } else if p.ends_with("/v1/messages") || p.contains("/v1/messages/") {
+            Some(Self::AnthropicMessages)
+        } else {
+            None
         }
     }
 }
@@ -177,7 +180,11 @@ pub struct Meter {
 
 impl Meter {
     pub fn new(dialect: Dialect) -> Self {
-        Self { dialect, usage: Usage::default(), saw_terminal: false }
+        Self {
+            dialect,
+            usage: Usage::default(),
+            saw_terminal: false,
+        }
     }
 
     /// Observe one frame. Never fails; unparseable frames are skipped.
@@ -185,7 +192,9 @@ impl Meter {
         if frame.data == "[DONE]" {
             return;
         }
-        let Ok(v) = serde_json::from_str::<Value>(&frame.data) else { return };
+        let Ok(v) = serde_json::from_str::<Value>(&frame.data) else {
+            return;
+        };
         match self.dialect {
             Dialect::AnthropicMessages => self.observe_anthropic(frame, &v),
             Dialect::OpenAiChat => self.observe_openai(&v),
@@ -218,8 +227,12 @@ impl Meter {
             self.usage.input += g("input_tokens");
             self.usage.cache_read += g("cache_read_input_tokens");
             // Prefer the split breakdown; fall back to the flat total.
-            let m5 = u.pointer("/cache_creation/ephemeral_5m_input_tokens").and_then(Value::as_u64);
-            let m1 = u.pointer("/cache_creation/ephemeral_1h_input_tokens").and_then(Value::as_u64);
+            let m5 = u
+                .pointer("/cache_creation/ephemeral_5m_input_tokens")
+                .and_then(Value::as_u64);
+            let m1 = u
+                .pointer("/cache_creation/ephemeral_1h_input_tokens")
+                .and_then(Value::as_u64);
             match (m5, m1) {
                 (None, None) => self.usage.cache_write_5m += g("cache_creation_input_tokens"),
                 _ => {
@@ -233,14 +246,18 @@ impl Meter {
         if out > 0 {
             self.usage.output = out;
         }
-        if let Some(t) = u.pointer("/output_tokens_details/thinking_tokens").and_then(Value::as_u64)
+        if let Some(t) = u
+            .pointer("/output_tokens_details/thinking_tokens")
+            .and_then(Value::as_u64)
         {
             self.usage.reasoning = t;
         }
     }
 
     fn observe_openai(&mut self, v: &Value) {
-        let Some(u) = v.get("usage").filter(|u| !u.is_null()) else { return };
+        let Some(u) = v.get("usage").filter(|u| !u.is_null()) else {
+            return;
+        };
         let g = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
         let cached = u
             .pointer("/prompt_tokens_details/cached_tokens")
@@ -385,7 +402,10 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
         for f in feed(&mut d, s) {
             m.observe(&f);
         }
-        assert!(!m.is_complete(), "no message_delta means we never saw the total");
+        assert!(
+            !m.is_complete(),
+            "no message_delta means we never saw the total"
+        );
         assert_eq!(m.usage().input, 9, "but what we did see is still recorded");
     }
 
@@ -400,7 +420,10 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
             m.observe(&f);
         }
         let u = m.usage();
-        assert_eq!(u.input, 200, "prompt_tokens includes cached; they must be split out");
+        assert_eq!(
+            u.input, 200,
+            "prompt_tokens includes cached; they must be split out"
+        );
         assert_eq!(u.cache_read, 800);
         assert_eq!(u.output, 40);
         assert_eq!(u.reasoning, 15);
@@ -411,7 +434,10 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
     fn openai_without_include_usage_is_incomplete_not_zero() {
         let mut m = Meter::new(Dialect::OpenAiChat);
         let mut d = SseDecoder::new();
-        for f in feed(&mut d, "data: {\"choices\":[{\"delta\":{}}]}\n\ndata: [DONE]\n\n") {
+        for f in feed(
+            &mut d,
+            "data: {\"choices\":[{\"delta\":{}}]}\n\ndata: [DONE]\n\n",
+        ) {
             m.observe(&f);
         }
         assert!(!m.is_complete());
@@ -420,8 +446,14 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
     #[test]
     fn garbage_frames_are_skipped() {
         let mut m = Meter::new(Dialect::OpenAiChat);
-        m.observe(&SseFrame { event: None, data: "not json".into() });
-        m.observe(&SseFrame { event: None, data: "{".into() });
+        m.observe(&SseFrame {
+            event: None,
+            data: "not json".into(),
+        });
+        m.observe(&SseFrame {
+            event: None,
+            data: "{".into(),
+        });
         assert_eq!(m.usage(), Usage::default());
     }
 
@@ -433,17 +465,35 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
         assert_eq!(r.cache_write_5m, 18_750_000);
         assert_eq!(r.cache_write_1h, 30_000_000);
 
-        let u = Usage { cache_read: 1_000_000, ..Default::default() };
-        let v = Usage { cache_write_1h: 1_000_000, ..Default::default() };
+        let u = Usage {
+            cache_read: 1_000_000,
+            ..Default::default()
+        };
+        let v = Usage {
+            cache_write_1h: 1_000_000,
+            ..Default::default()
+        };
         assert_eq!(u.micros(&r), 1_500_000);
         assert_eq!(v.micros(&r), 30_000_000);
-        assert_eq!(v.micros(&r) / u.micros(&r), 20, "a 1h write costs 20x a read");
+        assert_eq!(
+            v.micros(&r) / u.micros(&r),
+            20,
+            "a 1h write costs 20x a read"
+        );
     }
 
     #[test]
     fn cache_ratio_flags_a_thrashing_prefix() {
-        let healthy = Usage { cache_read: 8_000, cache_write_5m: 1_000, ..Default::default() };
-        let thrashing = Usage { cache_read: 500, cache_write_5m: 5_000, ..Default::default() };
+        let healthy = Usage {
+            cache_read: 8_000,
+            cache_write_5m: 1_000,
+            ..Default::default()
+        };
+        let thrashing = Usage {
+            cache_read: 500,
+            cache_write_5m: 5_000,
+            ..Default::default()
+        };
         assert!(healthy.cache_read_write_ratio().unwrap() > 5.0);
         assert!(thrashing.cache_read_write_ratio().unwrap() < 1.0);
         assert_eq!(Usage::default().cache_read_write_ratio(), None);
@@ -451,8 +501,18 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
 
     #[test]
     fn dialect_is_chosen_by_path() {
-        assert_eq!(Dialect::for_path("/v1/messages"), Some(Dialect::AnthropicMessages));
-        assert_eq!(Dialect::for_path("/v1/chat/completions"), Some(Dialect::OpenAiChat));
+        assert_eq!(
+            Dialect::for_path("/v1/messages"),
+            Some(Dialect::AnthropicMessages)
+        );
+        assert_eq!(
+            Dialect::for_path("/v1/messages/"),
+            Some(Dialect::AnthropicMessages)
+        );
+        assert_eq!(
+            Dialect::for_path("/v1/chat/completions"),
+            Some(Dialect::OpenAiChat)
+        );
         assert_eq!(Dialect::for_path("/healthz"), None);
     }
 }

@@ -8,3 +8,4 @@
 2026-08-19 21:32 — M3 — raz-ident+arena wired; live path is declared headers or anonymous; prefix digest shadow-only (does not merge); 67 tests — next: restart proxy, one subagent session, compare `raz: tree` logs to the transcript
 2026-08-19 21:42 — M3 — gate: transcript d9b82c5f-70f0-4527-882f-098d7b136723.jsonl agentId ad949528c5419e788; raz tree [session:0 agent:1] parent=session — next: M4 metering
 2026-08-19 21:50 — M4 — SseDecoder+Meter on the tee; Anthropic+OpenAI usage into arena; incomplete marked; 70 tests — next: restart proxy, one real session, cross-check usage vs provider (cache tiers separate)
+2026-08-19 22:12 — M4 — cross-check red: session a5ab73a5 teed complete=false in=0; transcript had cache_read=140758 out=55. Cause: dialect None (path miss) so meter never ran. Default Anthropic + strip accept-encoding; 72 tests — next: rebuild proxy, same one-sentence prompt, compare in/out/cache_*

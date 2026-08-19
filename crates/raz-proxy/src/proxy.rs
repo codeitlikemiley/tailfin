@@ -133,21 +133,27 @@ impl Proxy {
             let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
             arena.task_mut(&node.root).begin(&node, None);
             eprintln!(
-                "raz: begin root={} node={} parent={:?} declared={} conf={:.2}",
+                "raz: begin root={} node={} parent={:?} declared={} conf={:.2} path={}",
                 node.root,
                 node.node,
                 node.parent,
                 node.source.is_declared(),
-                node.source.confidence()
+                node.source.confidence(),
+                parts.uri.path()
             );
         }
 
-        let dialect = Dialect::for_path(parts.uri.path());
+        // Unknown paths still get the Anthropic meter: Claude Code has used
+        // more than `/v1/messages` (sessions event streams, trailing slashes).
+        // OpenAI is matched first inside for_path. A miss yields zeros today.
+        let dialect = Dialect::for_path(parts.uri.path()).unwrap_or(Dialect::AnthropicMessages);
         let (dtx, drx) = mpsc::channel(TEE_CAPACITY);
         self.spawn_shadow(drx, node.clone(), HeaderViewOwned::from(&parts.headers));
 
         parts.uri = rewrite_uri(&self.upstream, &parts.uri)?;
         strip_hop_by_hop(&mut parts.headers);
+        // So the tee sees plaintext SSE. We never decompress the relayed body.
+        parts.headers.remove("accept-encoding");
         if let Some(auth) = parts.uri.authority() {
             parts
                 .headers
@@ -168,7 +174,7 @@ impl Proxy {
         let (mut parts, body) = resp.into_parts();
         strip_hop_by_hop(&mut parts.headers);
         let (tx, rx) = mpsc::channel(TEE_CAPACITY);
-        self.spawn_meter(rx, dialect, node.clone());
+        self.spawn_meter(rx, Some(dialect), node.clone());
         let body = TeeBody::new(body, tx)
             .map_err(|e| Box::new(e) as BoxError)
             .boxed();
