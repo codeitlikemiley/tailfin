@@ -20,7 +20,7 @@ Gate: a curl of a non-streaming completion through raz is byte-identical to dire
       counts for now
 - [x] kill-the-meter test: metering task aborted mid-stream, client still gets a
       complete response
-- [ ] REAL-AGENT GATE: a full interactive Claude Code session through raz —
+- [x] REAL-AGENT GATE: a full interactive Claude Code session through raz —
       streaming, tool use, a subagent spawn — with no visible behaviour change
 Gate: the real-agent session, plus the kill-the-meter test, both pass.
 
