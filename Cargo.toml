@@ -4,6 +4,7 @@ members = [
   "crates/raz-ident",
   "crates/raz-wire",
   "crates/raz-tree",
+  "crates/raz-proxy",
 ]
 
 [workspace.package]

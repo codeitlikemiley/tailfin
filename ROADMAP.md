@@ -8,10 +8,10 @@ Gate = the sentence that must be true before the milestone is ticked.
 Gate: `cargo test --workspace` → 42 passing on a clean clone.
 
 ## M1 — proxy skeleton (raz-proxy)
-- [ ] hyper server on 127.0.0.1:7171, tokio, graceful shutdown
-- [ ] forwards method/path/headers/body to a configurable upstream base URL
-- [ ] hop-by-hop headers handled correctly; everything else byte-identical
-- [ ] non-streaming JSON round-trip works against a stub upstream (test)
+- [x] hyper server on 127.0.0.1:7171, tokio, graceful shutdown
+- [x] forwards method/path/headers/body to a configurable upstream base URL
+- [x] hop-by-hop headers handled correctly; everything else byte-identical
+- [x] non-streaming JSON round-trip works against a stub upstream (test)
 Gate: a curl of a non-streaming completion through raz is byte-identical to direct.
 
 ## M2 — streaming fidelity

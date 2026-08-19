@@ -1,0 +1,13 @@
+[package]
+name = "raz-proxy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "HTTP relay with passthrough observation"
+
+[dependencies]
+bytes = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server", "client"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "server-graceful", "tokio", "service"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "io-util", "time", "sync"] }
