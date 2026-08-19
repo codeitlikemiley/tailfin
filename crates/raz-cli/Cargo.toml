@@ -3,10 +3,14 @@ name = "raz-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "raz run and raz report"
+description = "raz run, report, replay, stamp, blame, doctor"
 
 [[bin]]
 name = "raz"
+path = "src/main.rs"
+
+[[bin]]
+name = "raz-cli"
 path = "src/main.rs"
 
 [dependencies]

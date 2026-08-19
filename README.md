@@ -31,13 +31,15 @@ brew tap goldcoders/raz https://github.com/goldcoders/raz
 brew install raz
 ```
 
+Build from this repo with **`-p raz-cli`** (`-p raz` is the wrong package):
+
 ```sh
-raz run --upstream https://api.anthropic.com
-# another terminal:
-ANTHROPIC_BASE_URL=http://localhost:7171 claude
-# after a session:
-raz report
+cargo build -p raz-cli --release
+./target/release/raz-cli report
+./target/release/raz-cli run --upstream https://api.anthropic.com
 ```
+
+`report`, `replay`, `stamp`, `blame`, and `doctor` live on this binary. A different program named `raz` may already be on PATH; this repo's CLI is `./target/release/raz-cli` (same code as `./target/release/raz`).
 
 `raz report --rates rates.toml` prints dollars. Without a rate card it prints tokens only.
 `raz report --share` prints the same table with session ids and paths stripped,

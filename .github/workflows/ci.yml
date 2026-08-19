@@ -24,3 +24,5 @@ jobs:
           bash scripts/pack-release.sh target/release/raz x86_64-unknown-linux-gnu
           PREFIX="$HOME/.local" RAZ_TARBALL=dist/raz-x86_64-unknown-linux-gnu.tar.gz bash install.sh
           "$HOME/.local/bin/raz" report --help
+          ./target/release/raz-cli report --help
+          ./target/release/raz report --help
