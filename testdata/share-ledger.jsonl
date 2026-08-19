@@ -1,0 +1,2 @@
+{"schema_version":1,"task_id":"/Users/alice/secret-project","node":"/Users/alice/secret-project","parent":null,"confidence":1.0,"incomplete":false,"input":0,"output":100,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"reasoning":0,"peak_concurrency":1,"ts_unix_ms":1}
+{"schema_version":1,"task_id":"/Users/alice/secret-project","node":"287f4ade-7829-4477-ab3c-825dd4c29171","parent":"/Users/alice/secret-project","confidence":1.0,"incomplete":false,"input":0,"output":900,"cache_write_5m":0,"cache_write_1h":0,"cache_read":0,"reasoning":0,"peak_concurrency":2,"ts_unix_ms":2}

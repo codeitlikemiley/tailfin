@@ -506,6 +506,30 @@ mod tests {
     }
 
     #[test]
+    fn share_mode_from_ledger_file_redacts_paths_and_uuids() {
+        let path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/share-ledger.jsonl");
+        let records = Ledger::read_all(&path).unwrap();
+        assert_eq!(
+            records.len(),
+            2,
+            "fixture must be the committed share ledger"
+        );
+        let text = render(&records, None, true);
+        assert!(!text.contains('/'), "no paths: {text}");
+        assert!(!text.contains("Users"), "{text}");
+        assert!(!text.contains("alice"), "{text}");
+        assert!(!text.contains("secret-project"), "{text}");
+        assert!(!text.contains("287f4ade"), "{text}");
+        assert!(!text.contains("7829-4477"), "{text}");
+        assert!(text.contains("task 1"), "{text}");
+        assert!(text.contains("main"), "{text}");
+        assert!(text.contains("sub 1"), "{text}");
+        assert!(text.contains("fan-out"), "{text}");
+        assert!(text.contains("1000") || text.contains("900"), "{text}");
+    }
+
+    #[test]
     fn share_mode_redacts_uuids_across_tasks() {
         let a = Record::from_finish(
             &node(
@@ -534,6 +558,7 @@ mod tests {
             1,
         );
         let text = render(&[a, b], None, true);
+        assert!(!text.contains('/'), "no paths: {text}");
         assert!(!text.contains("287f4ade"), "{text}");
         assert!(!text.contains("aaaaaaaa"), "{text}");
         assert!(text.contains("task 1"), "{text}");

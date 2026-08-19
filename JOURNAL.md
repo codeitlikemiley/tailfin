@@ -15,3 +15,4 @@
 2026-08-19 23:45 — M5 — JSONL ledger schema v1 + raz run/report; live fan-out 1.92x main 246864 / sub 227827; first row in=2 out=230 cache_1h=111401 matches transcript exactly; --capture reserved; 79 tests — next: M6 release engineering
 2026-08-19 23:55 — M6 — CI + tagged release (macOS arm64/x64, Linux x64); install.sh; Formula/raz.rb; README around the finding. Gate: debian:bookworm-slim with no rustc, RAZ_TARBALL install, `raz report --help` — next: M7 launch pack
 2026-08-20 00:15 — M7 — `raz report --share` redacts paths and ids; docs/launch.md drafted from the measured 1.92× / 48% session, not 82%; 2-day dogfood still open — next: human approval of docs/launch.md
+2026-08-20 00:22 — M7 — committed testdata/share-ledger.jsonl; share-mode tests read the fixture through Ledger::read_all+render; 2-day dogfood still open — next: human approval of docs/launch.md
