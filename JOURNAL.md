@@ -7,3 +7,4 @@
 2026-08-19 21:27 — M2 — real-agent gate: Claude Code 2.1.235 through 127.0.0.1:7171; streaming + tools + Explore subagent (Haiku 4.5) on docs/endgame.md; no visible behaviour change — next: M3 identity wiring
 2026-08-19 21:32 — M3 — raz-ident+arena wired; live path is declared headers or anonymous; prefix digest shadow-only (does not merge); 67 tests — next: restart proxy, one subagent session, compare `raz: tree` logs to the transcript
 2026-08-19 21:42 — M3 — gate: transcript d9b82c5f-70f0-4527-882f-098d7b136723.jsonl agentId ad949528c5419e788; raz tree [session:0 agent:1] parent=session — next: M4 metering
+2026-08-19 21:50 — M4 — SseDecoder+Meter on the tee; Anthropic+OpenAI usage into arena; incomplete marked; 70 tests — next: restart proxy, one real session, cross-check usage vs provider (cache tiers separate)

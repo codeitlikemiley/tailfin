@@ -5,7 +5,6 @@
 
 mod hop;
 mod identity;
-mod observe;
 mod proxy;
 mod serve;
 mod tee;
@@ -120,6 +119,7 @@ mod tests {
     use hyper::{Method, Request, Response, StatusCode};
     use hyper_util::client::legacy::Client;
     use hyper_util::rt::{TokioExecutor, TokioIo};
+    use raz_wire::Usage;
     use std::convert::Infallible;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
@@ -293,7 +293,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn non_streaming_json_round_trip_is_byte_identical_to_direct() {
         let payload =
             Bytes::from_static(br#"{"id":"msg_1","content":[{"type":"text","text":"hi"}]}"#);
@@ -355,7 +355,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn forwards_method_path_query_and_body() {
         let seen: Arc<Mutex<Option<(String, String, Bytes)>>> = Arc::new(Mutex::new(None));
         let stub = spawn_http_server({
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(got_body, body);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn hop_by_hop_request_headers_are_not_forwarded() {
         let seen: Arc<Mutex<Option<HeaderMap>>> = Arc::new(Mutex::new(None));
         let stub = spawn_http_server({
@@ -449,7 +449,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn hop_by_hop_response_headers_are_not_forwarded() {
         let stub = spawn_http_server(|_req| async move {
             Response::builder()
@@ -481,7 +481,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn host_is_rewritten_to_upstream_authority() {
         let seen: Arc<Mutex<Option<HeaderValue>>> = Arc::new(Mutex::new(None));
         let stub = spawn_http_server({
@@ -518,7 +518,7 @@ mod tests {
         assert_ne!(host.as_bytes(), proxy_addr.to_string().as_bytes());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn graceful_shutdown_completes_in_flight_request() {
         let received = Arc::new(Notify::new());
         let release = Arc::new(Notify::new());
@@ -567,7 +567,7 @@ mod tests {
             .expect("join");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn unreachable_upstream_returns_502() {
         let dead = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let dead_addr = dead.local_addr().unwrap();
@@ -617,7 +617,7 @@ mod tests {
         .await
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn sse_is_forwarded_unbuffered() {
         let first_sent = Arc::new(Notify::new());
         let send_rest = Arc::new(Notify::new());
@@ -658,7 +658,7 @@ mod tests {
         handle.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn tee_sees_every_sse_frame() {
         let first_sent = Arc::new(Notify::new());
         let send_rest = Arc::new(Notify::new());
@@ -691,7 +691,7 @@ mod tests {
         assert_eq!(*frames.lock().unwrap(), 3);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn kill_the_meter_still_delivers_the_full_response() {
         let first_sent = Arc::new(Notify::new());
         let send_rest = Arc::new(Notify::new());
@@ -786,7 +786,7 @@ mod tests {
         .expect("shadow digest should run");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn declared_headers_build_a_subagent_tree() {
         let stub =
             spawn_http_server(
@@ -835,7 +835,7 @@ mod tests {
         handle.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn prefix_digest_does_not_merge_live_sessions() {
         let stub =
             spawn_http_server(
@@ -884,7 +884,7 @@ mod tests {
         handle.await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn shadow_digest_compared_against_declared_identity() {
         let stub =
             spawn_http_server(
@@ -920,6 +920,146 @@ mod tests {
         assert!(notes.iter().all(|n| n.live_root == "sess-1"));
         assert_eq!(tree_walk(&proxy, "sess-1")[0].0, "sess-1");
 
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    const ANTHROPIC_SSE: &[u8] = b"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12,\"cache_read_input_tokens\":6000,\"cache_creation\":{\"ephemeral_5m_input_tokens\":100,\"ephemeral_1h_input_tokens\":900}}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":250,\"output_tokens_details\":{\"thinking_tokens\":100}}}\n\n";
+    const OPENAI_SSE: &[u8] = b"data: {\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":40,\"prompt_tokens_details\":{\"cached_tokens\":800},\"completion_tokens_details\":{\"reasoning_tokens\":15}}}\n\ndata: [DONE]\n\n";
+    const INCOMPLETE_SSE: &[u8] =
+        b"event: message_start\ndata: {\"message\":{\"usage\":{\"input_tokens\":9}}}\n\n";
+
+    async fn wait_usage(proxy: &Proxy, root: &str, pred: impl Fn(&Usage, u32) -> bool) -> Usage {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                {
+                    let arena = proxy.arena().lock().unwrap();
+                    if let Some(t) = arena.get(root) {
+                        let u = t.total_usage();
+                        if pred(&u, t.incomplete_requests()) {
+                            return u;
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("meter should finish the node")
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn anthropic_usage_is_merged_into_the_arena_node() {
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        let u = wait_usage(&proxy, "sess-1", |u, _| u.output == 250).await;
+        assert_eq!(u.input, 12);
+        assert_eq!(u.cache_read, 6000);
+        assert_eq!(u.cache_write_5m, 100);
+        assert_eq!(u.cache_write_1h, 900);
+        assert_eq!(u.output, 250);
+        assert_eq!(u.reasoning, 100);
+        assert_eq!(
+            proxy
+                .arena()
+                .lock()
+                .unwrap()
+                .get("sess-1")
+                .unwrap()
+                .incomplete_requests(),
+            0
+        );
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn openai_usage_is_merged_into_the_arena_node() {
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(OPENAI_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/chat/completions",
+            HeaderMap::new(),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        let roots: Vec<String> = {
+            // anonymous root name is assigned at begin; wait until any task has output
+            tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    let found: Vec<String> = {
+                        let arena = proxy.arena().lock().unwrap();
+                        arena
+                            .roots()
+                            .filter(|t| t.total_usage().output == 40)
+                            .map(|t| t.root.clone())
+                            .collect()
+                    };
+                    if !found.is_empty() {
+                        return found;
+                    }
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .expect("openai usage")
+        };
+        let u = proxy
+            .arena()
+            .lock()
+            .unwrap()
+            .get(&roots[0])
+            .unwrap()
+            .total_usage();
+        assert_eq!(u.input, 200);
+        assert_eq!(u.cache_read, 800);
+        assert_eq!(u.output, 40);
+        assert_eq!(u.reasoning, 15);
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn incomplete_stream_is_marked_on_the_node() {
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(INCOMPLETE_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-1", None, None),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        wait_usage(&proxy, "sess-1", |u, inc| u.input == 9 && inc == 1).await;
         shutdown.send(()).ok();
         handle.await.unwrap();
     }

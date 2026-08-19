@@ -1,6 +1,5 @@
 use crate::hop::strip_hop_by_hop;
 use crate::identity::{messages_from_body, HeaderView};
-use crate::observe::FinishBody;
 use crate::tee::TeeBody;
 use crate::Error;
 use bytes::Bytes;
@@ -15,7 +14,7 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use raz_ident::{PrefixDigest, SessionIndex};
 use raz_tree::Arena;
-use raz_wire::Usage;
+use raz_wire::{Dialect, Meter as UsageMeter, SseDecoder, Usage};
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -50,6 +49,7 @@ pub(crate) struct ShadowCmp {
 pub struct Proxy {
     upstream: Uri,
     client: Client<HttpsConnector<HttpConnector>, BoxBody<Bytes, BoxError>>,
+    #[cfg_attr(not(test), allow(dead_code))]
     meter: Meter,
     ident: Arc<Mutex<SessionIndex>>,
     /// Separate index so digest matching cannot attach live nodes (M8 will).
@@ -142,6 +142,7 @@ impl Proxy {
             );
         }
 
+        let dialect = Dialect::for_path(parts.uri.path());
         let (dtx, drx) = mpsc::channel(TEE_CAPACITY);
         self.spawn_shadow(drx, node.clone(), HeaderViewOwned::from(&parts.headers));
 
@@ -167,19 +168,15 @@ impl Proxy {
         let (mut parts, body) = resp.into_parts();
         strip_hop_by_hop(&mut parts.headers);
         let (tx, rx) = mpsc::channel(TEE_CAPACITY);
-        self.spawn_meter(rx);
-        let teed = TeeBody::new(body, tx);
-        let arena = self.arena.clone();
-        let finish_node = node.clone();
-        let observed = FinishBody::new(teed, move |complete| {
-            finish_locked(&arena, &finish_node, complete);
-        });
-        let body = observed.map_err(|e| Box::new(e) as BoxError).boxed();
+        self.spawn_meter(rx, dialect, node.clone());
+        let body = TeeBody::new(body, tx)
+            .map_err(|e| Box::new(e) as BoxError)
+            .boxed();
         Ok(Response::from_parts(parts, body))
     }
 
     fn finish_node(&self, node: &raz_ident::NodeRef, complete: bool) {
-        finish_locked(&self.arena, node, complete);
+        finish_locked(&self.arena, node, &Usage::default(), complete);
     }
 
     fn spawn_shadow(
@@ -223,49 +220,53 @@ impl Proxy {
         });
     }
 
-    fn spawn_meter(&self, mut rx: mpsc::Receiver<Bytes>) {
-        match self.meter.clone() {
-            Meter::Log => {
-                tokio::spawn(async move {
-                    let mut frames = 0usize;
-                    let mut bytes = 0usize;
-                    while let Some(chunk) = rx.recv().await {
-                        frames += 1;
-                        bytes += chunk.len();
+    fn spawn_meter(
+        &self,
+        mut rx: mpsc::Receiver<Bytes>,
+        dialect: Option<Dialect>,
+        node: raz_ident::NodeRef,
+    ) {
+        let arena = self.arena.clone();
+        #[cfg(test)]
+        let kind = self.meter.clone();
+        tokio::spawn(async move {
+            let mut decoder = SseDecoder::new();
+            let mut meter = dialect.map(UsageMeter::new);
+            let mut frames = 0usize;
+            let mut bytes = 0usize;
+            while let Some(chunk) = rx.recv().await {
+                frames += 1;
+                bytes += chunk.len();
+                #[cfg(test)]
+                match &kind {
+                    Meter::Count(n) => *n.lock().expect("count") += 1,
+                    Meter::KillAfter(limit) if frames >= *limit => return,
+                    _ => {}
+                }
+                if let Some(m) = meter.as_mut() {
+                    for frame in decoder.push(&chunk) {
+                        m.observe(&frame);
                     }
-                    if frames > 0 {
-                        eprintln!("raz: teed {frames} frames / {bytes} bytes");
-                    }
-                });
+                }
             }
-            #[cfg(test)]
-            Meter::Count(n) => {
-                tokio::spawn(async move {
-                    while rx.recv().await.is_some() {
-                        *n.lock().expect("count") += 1;
-                    }
-                });
+            let (usage, complete) = match meter {
+                Some(m) => (m.usage(), m.is_complete()),
+                None => (Usage::default(), false),
+            };
+            if frames > 0 {
+                eprintln!(
+                    "raz: teed {frames} frames / {bytes} bytes in={} out={} cache_read={} cache_5m={} cache_1h={} complete={complete}",
+                    usage.input, usage.output, usage.cache_read, usage.cache_write_5m, usage.cache_write_1h
+                );
             }
-            #[cfg(test)]
-            Meter::KillAfter(limit) => {
-                tokio::spawn(async move {
-                    for _ in 0..limit {
-                        if rx.recv().await.is_none() {
-                            return;
-                        }
-                    }
-                    panic!("kill-the-meter");
-                });
-            }
-        }
+            finish_locked(&arena, &node, &usage, complete);
+        });
     }
 }
 
-fn finish_locked(arena: &Mutex<Arena>, node: &raz_ident::NodeRef, complete: bool) {
+fn finish_locked(arena: &Mutex<Arena>, node: &raz_ident::NodeRef, usage: &Usage, complete: bool) {
     let mut arena = arena.lock().unwrap_or_else(|e| e.into_inner());
-    arena
-        .task_mut(&node.root)
-        .finish(node, &Usage::default(), complete);
+    arena.task_mut(&node.root).finish(node, usage, complete);
     if let Some(task) = arena.get(&node.root) {
         let walk: Vec<_> = task
             .walk()
