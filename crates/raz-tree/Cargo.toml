@@ -1,0 +1,10 @@
+[package]
+name = "raz-tree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Task tree arena with live cost roll-up"
+
+[dependencies]
+raz-ident = { path = "../raz-ident" }
+raz-wire  = { path = "../raz-wire" }
