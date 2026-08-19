@@ -157,13 +157,15 @@ impl Proxy {
             return Ok(hello_ok());
         }
         let (mut parts, body) = req.into_parts();
-        // Digest is passed as None: live identity is declared headers or
-        // anonymous. Prefix matching stays shadow until M10.
+        // Request JSON is collected so undeclared agents can resolve from a
+        // prefix digest. The *response* is still teed, never to_bytes'd.
+        let buf = body.collect().await?.to_bytes();
+        let digest = messages_from_body(&buf).map(|m| PrefixDigest::from_messages(&m));
         let node = self
             .ident
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .resolve(&HeaderView(&parts.headers), None);
+            .resolve(&HeaderView(&parts.headers), digest);
         let orig_path = parts.uri.path().to_string();
         let method = parts.method.as_str().to_string();
         let capture_id = self.capture.as_ref().map(|_| {
@@ -218,9 +220,8 @@ impl Proxy {
         // more than `/v1/messages` (sessions event streams, trailing slashes).
         // OpenAI is matched first inside for_path. A miss yields zeros today.
         let dialect = Dialect::for_path(parts.uri.path()).unwrap_or(Dialect::AnthropicMessages);
-        let (dtx, drx) = mpsc::channel(TEE_CAPACITY);
-        self.spawn_shadow(
-            drx,
+        self.observe_request(
+            buf.clone(),
             node.clone(),
             HeaderViewOwned::from(&parts.headers),
             method,
@@ -240,8 +241,8 @@ impl Proxy {
         // TeeBody is a new hop: leftover Content-Length makes the peer wait
         // forever for bytes that never come (Claude Code freeze after one reply).
         parts.headers.remove(CONTENT_LENGTH);
-        let req_body = TeeBody::new(body, dtx)
-            .map_err(|e| Box::new(e) as BoxError)
+        let req_body = Full::new(buf)
+            .map_err(|never: Infallible| -> BoxError { match never {} })
             .boxed();
         let upstream_req = Request::from_parts(parts, req_body);
 
@@ -274,9 +275,9 @@ impl Proxy {
         );
     }
 
-    fn spawn_shadow(
+    fn observe_request(
         &self,
-        mut rx: mpsc::Receiver<Bytes>,
+        buf: Bytes,
         live: raz_ident::NodeRef,
         headers: HeaderViewOwned,
         method: String,
@@ -287,10 +288,6 @@ impl Proxy {
         let notes = self.shadow_notes.clone();
         let capture = self.capture.clone();
         tokio::spawn(async move {
-            let mut buf = Vec::new();
-            while let Some(chunk) = rx.recv().await {
-                buf.extend_from_slice(&chunk);
-            }
             if let (Some(store), Some(id)) = (capture.as_ref(), capture_id.as_ref()) {
                 let body = String::from_utf8_lossy(&buf).into_owned();
                 let (model, message_count, tool_calls) = raz_ledger::body_meta(&body);

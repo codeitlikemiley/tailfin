@@ -839,7 +839,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn prefix_digest_does_not_merge_live_sessions() {
+    async fn undeclared_continuation_joins_on_prefix() {
         let stub =
             spawn_http_server(
                 |_req| async move { Response::new(Full::new(Bytes::from_static(b"{}"))) },
@@ -847,15 +847,18 @@ mod tests {
             .await;
         let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
 
-        let shared = Bytes::from_static(
+        let first = Bytes::from_static(
             br#"{"messages":[{"role":"user","content":"sys"},{"role":"user","content":"hello"}]}"#,
+        );
+        let cont = Bytes::from_static(
+            br#"{"messages":[{"role":"user","content":"sys"},{"role":"user","content":"hello"},{"role":"user","content":"more"}]}"#,
         );
         send(
             proxy_addr,
             Method::POST,
             "/v1/messages",
             HeaderMap::new(),
-            shared.clone(),
+            first,
         )
         .await;
         send(
@@ -863,25 +866,55 @@ mod tests {
             Method::POST,
             "/v1/messages",
             HeaderMap::new(),
-            shared,
+            cont,
+        )
+        .await;
+
+        assert_eq!(
+            proxy.arena().lock().unwrap().len(),
+            1,
+            "depth-2 continuation must join the live session"
+        );
+
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn shared_system_prompt_alone_does_not_merge_live_sessions() {
+        let stub =
+            spawn_http_server(
+                |_req| async move { Response::new(Full::new(Bytes::from_static(b"{}"))) },
+            )
+            .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            HeaderMap::new(),
+            Bytes::from_static(
+                br#"{"messages":[{"role":"user","content":"sys"},{"role":"user","content":"aaa"}]}"#,
+            ),
+        )
+        .await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            HeaderMap::new(),
+            Bytes::from_static(
+                br#"{"messages":[{"role":"user","content":"sys"},{"role":"user","content":"bbb"}]}"#,
+            ),
         )
         .await;
 
         assert_eq!(
             proxy.arena().lock().unwrap().len(),
             2,
-            "shadow digest must not attach live nodes"
+            "depth-1 system prompt must not merge live sessions"
         );
-
-        wait_shadow(proxy.shadow_notes(), 2).await;
-        let notes = proxy.shadow_notes().lock().unwrap().clone();
-        assert!(notes.iter().all(|n| !n.declared));
-        assert!(notes.iter().all(|n| n.had_digest));
-        assert_eq!(
-            notes[0].shadow_root, notes[1].shadow_root,
-            "shadow index would have merged; live must not"
-        );
-        assert_ne!(notes[0].live_root, notes[1].live_root);
 
         shutdown.send(()).ok();
         handle.await.unwrap();

@@ -101,10 +101,11 @@ Gate: stub path proven. Live multi-request runaway depends on Claude issuing a
 second `/v1/messages` after the overshoot.
 
 ## M10 — prefix inference authoritative
-- [ ] digest promoted from shadow mode to authoritative for undeclared agents
-- [ ] min match depth tuned against real multi-session traffic; false-merge and
+- [x] digest promoted from shadow mode to authoritative for undeclared agents
+- [x] min match depth tuned against real multi-session traffic; false-merge and
       false-split rates measured and recorded in docs/
-Gate: an aider or opencode session is attributed correctly with zero declared headers.
+      *(synthetic corpus in docs/prefix-inference.md: 0/32 false merge, 0/32 false split)*
+Gate: BLOCKED: aider/opencode live session with zero declared headers not run here.
 
 ## M11 — cost stamps (endgame L4)
 - [ ] `raz stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,

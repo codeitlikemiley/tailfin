@@ -562,4 +562,50 @@ mod tests {
         let deep = IdentitySource::Inferred { shared_depth: 32 }.confidence();
         assert!(deep > shallow);
     }
+
+    #[test]
+    fn false_merge_and_split_rates_on_synthetic_traffic() {
+        let h: HashMap<String, String> = HashMap::new();
+        let mut merges = 0u32;
+        let mut merge_trials = 0u32;
+        for i in 0..32 {
+            let mut idx = SessionIndex::new();
+            idx.resolve(
+                &h,
+                Some(PrefixDigest::from_messages(&[
+                    "sys".to_string(),
+                    format!("a-{i}"),
+                ])),
+            );
+            idx.resolve(
+                &h,
+                Some(PrefixDigest::from_messages(&[
+                    "sys".to_string(),
+                    format!("b-{i}"),
+                ])),
+            );
+            merge_trials += 1;
+            if idx.live_sessions() < 2 {
+                merges += 1;
+            }
+        }
+        let mut splits = 0u32;
+        let mut split_trials = 0u32;
+        for i in 0..32 {
+            let mut idx = SessionIndex::new();
+            let prefix = vec!["sys".to_string(), format!("turn-{i}")];
+            idx.resolve(&h, Some(PrefixDigest::from_messages(&prefix)));
+            let mut longer = prefix.clone();
+            longer.push("next".into());
+            idx.resolve(&h, Some(PrefixDigest::from_messages(&longer)));
+            split_trials += 1;
+            if idx.live_sessions() != 1 {
+                splits += 1;
+            }
+        }
+        let false_merge = merges as f64 / merge_trials as f64;
+        let false_split = splits as f64 / split_trials as f64;
+        assert_eq!(false_merge, 0.0, "shared system prompt must not merge");
+        assert_eq!(false_split, 0.0, "continuations must not split");
+    }
 }
