@@ -1,49 +1,71 @@
 # raz
 
-A proxy that infers **task structure** from LLM wire traffic, so a per-task budget
-becomes possible for agents you didn't write.
+**The flight recorder for AI agents.**
 
-Every product that enforces a per-task ceiling today makes the caller declare the
-task boundary — an SDK context manager, a registered agent, a trace-id header, a
-hosted harness. None can draw one around an unmodified coding agent that opens an
-HTTPS connection and starts talking. This draws it anyway.
-
-## Status
-
-Three crates, no HTTP dependency, no async runtime, no I/O — testable before a
-single byte moves over a socket.
-
-| crate | what | tests |
-|---|---|---|
-| `raz-ident` | task identity: header parsers + rolling prefix digest | 15 |
-| `raz-wire`  | incremental SSE decode + provider-agnostic usage extraction | 15 |
-| `raz-tree`  | task arena, cost roll-up, admission decisions | 12 |
+Your coding agent spawns subagents you never see, and they spend most of your money.
+raz sits between any agent and any provider — one environment variable, no SDK, no
+account — and shows you the whole task tree: what each job cost, which subagent burned
+it, and how deep the fan-out went. Soon: stop any task at a ceiling you set.
 
 ```
-cargo test --workspace     # 42 passing
-cargo clippy --workspace --all-targets
+ANTHROPIC_BASE_URL=http://localhost:7171   # Claude Code
+OPENAI_BASE_URL=http://localhost:7171/v1   # Codex, aider, opencode, Cline, local models
 ```
 
-`raz-proxy`, `raz-ledger`, `raz-cli` are week one. `raz-policy` is month three.
+Works with the tools you already use. Everything stays on your machine. No telemetry, ever.
 
-## The two ideas worth reading the code for
+v0.1 observes. It does not enforce. The task is the unit.
 
-**Prefix digest** (`raz-ident`) — the signal that tells you two requests belong to
-one conversation is the same signal the provider uses to decide whether its prompt
-cache hits: a stable, shared, ordered prefix. So prefix matching isn't a heuristic
-bolted on the side; it's the wire's own notion of continuity.
+## Install
 
-**Cache tiers stay separate** (`raz-wire`) — reads price at 0.1x input, 5-minute
-writes at 1.25x, 1-hour writes at 2x. Summing them is how tools end up reporting
-savings while the bill goes up.
+Prebuilt binaries. You do not compile.
 
-## Honest constraints, encoded in the tests
+```sh
+curl -fsSL https://raw.githubusercontent.com/goldcoders/raz/main/install.sh | bash
+```
 
-- A ceiling is hard only to within **one in-flight request per branch**. Cost is
-  knowable only after a response completes. `Admission::Last` names this.
-- A stream that never delivers its terminal usage frame is marked
-  `is_complete() == false`, not silently recorded as zero.
-- A shared system prompt alone must never merge two sessions.
+Homebrew:
+
+```sh
+brew tap goldcoders/raz https://github.com/goldcoders/raz
+brew install raz
+```
+
+```sh
+raz run --upstream https://api.anthropic.com
+# another terminal:
+ANTHROPIC_BASE_URL=http://localhost:7171 claude
+# after a session:
+raz report
+```
+
+`raz report --rates rates.toml` prints dollars. Without a rate card it prints tokens only.
+
+## Honest constraints
+
+Cost is knowable only after a response completes, so any
+ceiling is hard only to within one in-flight request per branch. `Admission::Last`
+encodes this. Every user-facing mention of budgets states it plainly.
+
+Claude Code under subscription auth (`ANTHROPIC_BASE_URL` set, no API key): traffic
+passes through raz but billing follows the subscription's opaque quota. We meter
+tokens; we do not see their bill. Never claim otherwise.
+
+Fan-out figures in the launch material came from one real session (82% subagent
+share, 11.6x multiplier) priced at illustrative list rates. Ratios are real token
+counts; dollars are not a bill.
+
+## What it actually measures
+
+The signal that two requests belong to one conversation is the same signal the
+provider uses for prompt cache: a stable, shared, ordered prefix. Declared headers
+(Claude Code, Codex) are authoritative; prefix inference is shadow-mode until M8.
+
+Cache reads price at 0.1x input; 5-minute writes at 1.25x; 1-hour writes at 2x.
+Never summed into one number.
+
+A stream that never delivered its terminal usage frame is recorded as incomplete —
+never silently counted as zero.
 
 ## License
 

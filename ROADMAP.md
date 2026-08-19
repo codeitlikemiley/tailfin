@@ -53,10 +53,10 @@ Gate: `raz report` on a real fan-out session prints the table and the numbers
 reconcile with M4's cross-check.
 
 ## M6 — release engineering
-- [ ] GitHub Actions: build + test on push; release workflow producing macOS
+- [x] GitHub Actions: build + test on push; release workflow producing macOS
       arm64/x64 and Linux x64 binaries on tag
-- [ ] install script (curl | sh) and Homebrew tap formula
-- [ ] README rewritten around the finding, not the tool; includes the honest-ceiling
+- [x] install script (curl | sh) and Homebrew tap formula
+- [x] README rewritten around the finding, not the tool; includes the honest-ceiling
       and subscription-auth caveats verbatim from CLAUDE.md
 Gate: on a machine (or clean VM/container) without Rust, install script → working
 `raz` in under a minute.
