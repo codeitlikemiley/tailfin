@@ -19,6 +19,8 @@ pub async fn serve(
     let mut shutdown = pin!(shutdown);
     let mut http = http1::Builder::new();
     http.preserve_header_case(true);
+    // SSE + keep-alive reuse is how a completed reply leaves the TUI frozen.
+    http.keep_alive(false);
 
     loop {
         tokio::select! {

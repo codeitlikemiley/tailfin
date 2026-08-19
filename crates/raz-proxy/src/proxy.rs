@@ -5,7 +5,7 @@ use crate::Error;
 use bytes::Bytes;
 use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::body::Incoming;
-use hyper::header::{HeaderValue, HOST};
+use hyper::header::{HeaderValue, CONTENT_LENGTH, HOST};
 use hyper::http::uri::PathAndQuery;
 use hyper::{Request, Response, StatusCode, Uri};
 use hyper_rustls::HttpsConnector;
@@ -163,6 +163,9 @@ impl Proxy {
                 .headers
                 .insert(HOST, HeaderValue::from_str(auth.as_str())?);
         }
+        // TeeBody is a new hop: leftover Content-Length makes the peer wait
+        // forever for bytes that never come (Claude Code freeze after one reply).
+        parts.headers.remove(CONTENT_LENGTH);
         let req_body = TeeBody::new(body, dtx)
             .map_err(|e| Box::new(e) as BoxError)
             .boxed();
@@ -177,6 +180,7 @@ impl Proxy {
         };
         let (mut parts, body) = resp.into_parts();
         strip_hop_by_hop(&mut parts.headers);
+        parts.headers.remove(CONTENT_LENGTH);
         let (tx, rx) = mpsc::channel(TEE_CAPACITY);
         self.spawn_meter(rx, Some(dialect), node.clone());
         let body = TeeBody::new(body, tx)
