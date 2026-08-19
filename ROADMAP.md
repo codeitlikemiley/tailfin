@@ -76,15 +76,17 @@ mechanism, so they build together; prefix inference widens compatibility but not
 above depends on it.
 
 ## M8 — shadow replay (endgame L2)
-- [ ] `--capture` mode: full request bodies stored locally, opt-in, off by default,
+- [x] `--capture` mode: full request bodies stored locally, opt-in, off by default,
       retention knob, schema versioned  *(skip if already done as part of M5)*
-- [ ] `raz replay --sample N --models a,b [--since 7d]` resubmits captured tasks via
+- [x] `raz replay --sample N --models a,b [--since 7d]` resubmits captured tasks via
       provider batch APIs under the user's own keys, never on the interactive path
-- [ ] scoring: native checks first (tests pass / compiles / diff applies); judge
+      *(live batch uses StubBatch until keys+a week of captures exist)*
+- [x] scoring: native checks first (tests pass / compiles / diff applies); judge
       model only as fallback, reported as agreement bands, never verdicts
-- [ ] output: task-shape × model × cost × survival table, n per row, confidence column
-Gate: one real week of your own tasks replayed against 2+ cheaper models produces a
-table you would publish as-is.
+- [x] output: task-shape × model × cost × survival table, n per row, confidence column
+Gate: BLOCKED: one real week of captured tasks replayed against 2+ cheaper models
+via live provider batch APIs — not available in this environment. Software path
+is stub-batch + table.
 
 ## M9 — the fuse and conservation (endgame L3)
 - [ ] `--max-per-task N` enforced: synthetic `end_turn` at the ceiling, then hard

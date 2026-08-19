@@ -2,6 +2,18 @@
 
 #![forbid(unsafe_code)]
 
+mod capture;
+mod replay;
+
+pub use capture::{
+    body_meta, default_capture_dir, parse_retention, CaptureRecord, CaptureStore, CAPTURE_SCHEMA,
+    DEFAULT_RETENTION,
+};
+pub use replay::{
+    render_table, replay, sample_captures, score_output, BatchSink, ReplayOpts, ReplayOutput,
+    ReplayRow, Score, StubBatch,
+};
+
 use raz_ident::NodeRef;
 use raz_tree::{Arena, Task};
 use raz_wire::{RateCard, Usage};
@@ -13,9 +25,6 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const SCHEMA_VERSION: u32 = 1;
-
-/// Printed when `--capture` is passed. Bodies are not stored until M8.
-pub const CAPTURE_NOTICE: &str = "capture lands in M8";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Record {
@@ -34,6 +43,8 @@ pub struct Record {
     pub reasoning: u64,
     pub peak_concurrency: u32,
     pub ts_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture_id: Option<String>,
 }
 
 impl Record {
@@ -58,7 +69,13 @@ impl Record {
             reasoning: usage.reasoning,
             peak_concurrency,
             ts_unix_ms: now_ms(),
+            capture_id: None,
         }
+    }
+
+    pub fn with_capture_id(mut self, id: impl Into<String>) -> Self {
+        self.capture_id = Some(id.into());
+        self
     }
 
     pub fn usage(&self) -> Usage {
@@ -453,8 +470,11 @@ mod tests {
     }
 
     #[test]
-    fn capture_notice_is_stable() {
-        assert_eq!(CAPTURE_NOTICE, "capture lands in M8");
+    fn capture_id_is_absent_by_default() {
+        let rec = Record::from_finish(&node("sess-1", "sess-1", None), &Usage::default(), false, 1);
+        assert!(rec.capture_id.is_none());
+        let json = serde_json::to_string(&rec).unwrap();
+        assert!(!json.contains("capture_id"), "{json}");
     }
 
     #[test]

@@ -43,6 +43,10 @@ raz report
 `raz report --share` prints the same table with session ids and paths stripped,
 so it can be pasted.
 
+`raz run --capture` stores request bodies locally (off by default; `--retention 7d`).
+`raz replay --sample 20 --models haiku,sonnet` resubmits those tasks through a batch
+sink — never through the interactive proxy.
+
 ## Honest constraints
 
 Cost is knowable only after a response completes, so any

@@ -121,7 +121,7 @@ mod tests {
     use hyper::{Method, Request, Response, StatusCode};
     use hyper_util::client::legacy::Client;
     use hyper_util::rt::{TokioExecutor, TokioIo};
-    use raz_ledger::Ledger;
+    use raz_ledger::{CaptureStore, Ledger, DEFAULT_RETENTION};
     use raz_wire::Usage;
     use std::convert::Infallible;
     use std::pin::Pin;
@@ -1195,6 +1195,85 @@ mod tests {
         assert_eq!(recs[0].task_id, "sess-1");
         assert_eq!(recs[0].output, 250);
         assert!(!recs[0].incomplete);
+        assert!(recs[0].capture_id.is_none());
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn capture_off_stores_no_bodies() {
+        let cap = std::env::temp_dir().join(format!("raz-cap-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cap);
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-off", None, None),
+            Bytes::from_static(br#"{"model":"x","messages":[{"role":"user","content":"secret"}]}"#),
+        )
+        .await;
+        wait_usage(&proxy, "sess-off", |u, _| u.output == 250).await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !cap.exists() || std::fs::read_dir(&cap).map(|d| d.count()).unwrap_or(0) == 0,
+            "capture dir must stay empty when capture is off"
+        );
+        let _ = std::fs::remove_dir_all(&cap);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn capture_on_stores_request_body_with_schema() {
+        let cap = std::env::temp_dir().join(format!("raz-cap-on-{}", std::process::id()));
+        let led = std::env::temp_dir().join(format!("raz-cap-on-{}-.jsonl", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cap);
+        let _ = std::fs::remove_file(&led);
+        let store = Arc::new(CaptureStore::open(&cap, DEFAULT_RETENTION).unwrap());
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                .unwrap()
+        })
+        .await;
+        let store2 = store.clone();
+        let led2 = led.clone();
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, move |p| {
+            p.with_ledger(Arc::new(Ledger::open(&led2).unwrap()))
+                .with_capture(store2)
+        })
+        .await;
+        let body = Bytes::from_static(
+            br#"{"model":"x","messages":[{"role":"user","content":"hello-capture"}]}"#,
+        );
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/messages",
+            claude_headers("sess-cap", None, None),
+            body,
+        )
+        .await;
+        wait_usage(&proxy, "sess-cap", |u, _| u.output == 250).await;
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let got = store.load_all().unwrap();
+        assert_eq!(got.len(), 1, "one captured request");
+        assert_eq!(got[0].schema_version, raz_ledger::CAPTURE_SCHEMA);
+        assert!(got[0].body.contains("hello-capture"), "{}", got[0].body);
+        assert_eq!(got[0].path, "/v1/messages");
+        let recs = Ledger::read_all(&led).unwrap();
+        assert!(recs[0].capture_id.is_some());
+        let _ = std::fs::remove_dir_all(&cap);
+        let _ = std::fs::remove_file(&led);
     }
 }

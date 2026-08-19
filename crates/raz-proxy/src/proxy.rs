@@ -57,6 +57,7 @@ pub struct Proxy {
     arena: Arc<Mutex<Arena>>,
     shadow_notes: Arc<Mutex<Vec<ShadowCmp>>>,
     ledger: Option<Arc<raz_ledger::Ledger>>,
+    capture: Option<Arc<raz_ledger::CaptureStore>>,
 }
 
 impl Proxy {
@@ -87,11 +88,17 @@ impl Proxy {
             arena: Arc::new(Mutex::new(Arena::new())),
             shadow_notes: Arc::new(Mutex::new(Vec::new())),
             ledger: None,
+            capture: None,
         })
     }
 
     pub fn with_ledger(mut self, ledger: Arc<raz_ledger::Ledger>) -> Self {
         self.ledger = Some(ledger);
+        self
+    }
+
+    pub fn with_capture(mut self, store: Arc<raz_ledger::CaptureStore>) -> Self {
+        self.capture = Some(store);
         self
     }
 
@@ -134,12 +141,28 @@ impl Proxy {
         }
         let (mut parts, body) = req.into_parts();
         // Digest is passed as None: live identity is declared headers or
-        // anonymous. Prefix matching stays shadow until M8.
+        // anonymous. Prefix matching stays shadow until M10.
         let node = self
             .ident
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .resolve(&HeaderView(&parts.headers), None);
+        let orig_path = parts.uri.path().to_string();
+        let method = parts.method.as_str().to_string();
+        let capture_id = self.capture.as_ref().map(|_| {
+            format!(
+                "{}-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0),
+                node.node
+                    .chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .take(12)
+                    .collect::<String>()
+            )
+        });
         {
             let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
             arena.task_mut(&node.root).begin(&node, None);
@@ -159,7 +182,14 @@ impl Proxy {
         // OpenAI is matched first inside for_path. A miss yields zeros today.
         let dialect = Dialect::for_path(parts.uri.path()).unwrap_or(Dialect::AnthropicMessages);
         let (dtx, drx) = mpsc::channel(TEE_CAPACITY);
-        self.spawn_shadow(drx, node.clone(), HeaderViewOwned::from(&parts.headers));
+        self.spawn_shadow(
+            drx,
+            node.clone(),
+            HeaderViewOwned::from(&parts.headers),
+            method,
+            orig_path,
+            capture_id.clone(),
+        );
 
         parts.uri = rewrite_uri(&self.upstream, &parts.uri)?;
         strip_hop_by_hop(&mut parts.headers);
@@ -181,7 +211,7 @@ impl Proxy {
         let resp = match self.client.request(upstream_req).await {
             Ok(resp) => resp,
             Err(err) => {
-                self.finish_node(&node, false);
+                self.finish_node(&node, false, capture_id.clone());
                 return Err(Box::new(err));
             }
         };
@@ -189,15 +219,22 @@ impl Proxy {
         strip_hop_by_hop(&mut parts.headers);
         parts.headers.remove(CONTENT_LENGTH);
         let (tx, rx) = mpsc::channel(TEE_CAPACITY);
-        self.spawn_meter(rx, Some(dialect), node.clone());
+        self.spawn_meter(rx, Some(dialect), node.clone(), capture_id);
         let body = TeeBody::new(body, tx)
             .map_err(|e| Box::new(e) as BoxError)
             .boxed();
         Ok(Response::from_parts(parts, body))
     }
 
-    fn finish_node(&self, node: &raz_ident::NodeRef, complete: bool) {
-        finish_locked(&self.arena, node, &Usage::default(), complete, &self.ledger);
+    fn finish_node(&self, node: &raz_ident::NodeRef, complete: bool, capture_id: Option<String>) {
+        finish_locked(
+            &self.arena,
+            node,
+            &Usage::default(),
+            complete,
+            &self.ledger,
+            capture_id,
+        );
     }
 
     fn spawn_shadow(
@@ -205,13 +242,41 @@ impl Proxy {
         mut rx: mpsc::Receiver<Bytes>,
         live: raz_ident::NodeRef,
         headers: HeaderViewOwned,
+        method: String,
+        path: String,
+        capture_id: Option<String>,
     ) {
         let shadow = self.shadow.clone();
         let notes = self.shadow_notes.clone();
+        let capture = self.capture.clone();
         tokio::spawn(async move {
             let mut buf = Vec::new();
             while let Some(chunk) = rx.recv().await {
                 buf.extend_from_slice(&chunk);
+            }
+            if let (Some(store), Some(id)) = (capture.as_ref(), capture_id.as_ref()) {
+                let body = String::from_utf8_lossy(&buf).into_owned();
+                let (model, message_count, tool_calls) = raz_ledger::body_meta(&body);
+                let rec = raz_ledger::CaptureRecord {
+                    schema_version: raz_ledger::CAPTURE_SCHEMA,
+                    capture_id: id.clone(),
+                    task_id: live.root.clone(),
+                    node: live.node.clone(),
+                    parent: live.parent.clone(),
+                    ts_unix_ms: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                    method,
+                    path,
+                    model,
+                    message_count,
+                    tool_calls,
+                    body,
+                };
+                if let Err(e) = store.save(&rec) {
+                    crate::log::log(format!("raz: capture write: {e}"));
+                }
             }
             let digest = messages_from_body(&buf).map(|m| PrefixDigest::from_messages(&m));
             let shadow_node = shadow
@@ -246,6 +311,7 @@ impl Proxy {
         mut rx: mpsc::Receiver<Bytes>,
         dialect: Option<Dialect>,
         node: raz_ident::NodeRef,
+        capture_id: Option<String>,
     ) {
         let arena = self.arena.clone();
         let ledger = self.ledger.clone();
@@ -281,7 +347,7 @@ impl Proxy {
                     usage.input, usage.output, usage.cache_read, usage.cache_write_5m, usage.cache_write_1h
                 ));
             }
-            finish_locked(&arena, &node, &usage, complete, &ledger);
+            finish_locked(&arena, &node, &usage, complete, &ledger, capture_id);
         });
     }
 }
@@ -292,6 +358,7 @@ fn finish_locked(
     usage: &Usage,
     complete: bool,
     ledger: &Option<Arc<raz_ledger::Ledger>>,
+    capture_id: Option<String>,
 ) {
     let mut arena = arena.lock().unwrap_or_else(|e| e.into_inner());
     arena.task_mut(&node.root).finish(node, usage, complete);
@@ -308,7 +375,10 @@ fn finish_locked(
         crate::log::log(format!("raz: tree {} [{}]", node.root, walk.join(" ")));
     }
     if let Some(led) = ledger {
-        let rec = raz_ledger::Record::from_finish(node, usage, !complete, peak);
+        let mut rec = raz_ledger::Record::from_finish(node, usage, !complete, peak);
+        if let Some(id) = capture_id {
+            rec = rec.with_capture_id(id);
+        }
         if let Err(e) = led.append(&rec) {
             crate::log::log(format!("raz: ledger write: {e}"));
         }
