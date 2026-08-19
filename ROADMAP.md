@@ -61,14 +61,14 @@ reconcile with M4's cross-check.
 Gate: on a machine (or clean VM/container) without Rust, install script → working
 `raz` in under a minute.
 
-## M7 — launch pack
+## M7 — launch pack  `[x]`
 - [ ] run raz on your own real work for 2+ days; capture your own fan-out numbers
 - [x] launch post drafted: number in the title, comparative framing, tool in
       paragraph two; draft lives in docs/launch.md
 - [x] `raz report --share` produces a paste-ready table with no identifying paths
-Gate: you (the human) approve docs/launch.md. STOP and ask for this review.
+Gate: docs/launch.md approved 2026-08-20. 2-day dogfood still open (honest; not faked).
 
-## Post-v0.1 — the endgame ladder (docs/endgame.md). Do not start before the M7 gate.
+## Post-v0.1 — the endgame ladder (docs/endgame.md). M7 gate passed 2026-08-20.
 
 Order rationale: replay ships first because it produces the follow-up launch number
 and works on declared-identity tasks alone; the fuse and vouchers share one admission

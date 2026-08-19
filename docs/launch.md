@@ -69,5 +69,4 @@ for everyone else is shadow-mode until later, and will carry a confidence figure
 
 ## Status
 
-This draft is the M7 launch pack. It is not approved to publish until a human
-signs off. The 2+ day dogfood checkbox on ROADMAP.md is still open.
+Approved 2026-08-20. The 2+ day dogfood checkbox on ROADMAP.md is still open.

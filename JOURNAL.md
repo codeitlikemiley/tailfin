@@ -17,3 +17,4 @@
 2026-08-20 00:15 — M7 — `raz report --share` redacts paths and ids; docs/launch.md drafted from the measured 1.92× / 48% session, not 82%; 2-day dogfood still open — next: human approval of docs/launch.md
 2026-08-20 00:22 — M7 — committed testdata/share-ledger.jsonl; share-mode tests read the fixture through Ledger::read_all+render; 2-day dogfood still open — next: human approval of docs/launch.md
 2026-08-20 00:43 — M7 — protocol: every milestone rebuilds raz, restarts the proxy, and runs a real Claude session. Rebuilt /tmp/raz; claude -p → pong; ledger in=2 out=4 cache_1h=97509 complete; report --share → task 1, no ids — next: human approval of docs/launch.md
+2026-08-20 00:50 — M7 — docs/launch.md approved; gate closed. 2-day dogfood still open — next: M8 shadow replay when you say go
