@@ -13,8 +13,8 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use raz_ident::{PrefixDigest, SessionIndex};
-use raz_tree::Arena;
-use raz_wire::{Dialect, Meter as UsageMeter, SseDecoder, Usage};
+use raz_tree::{Admission, Arena, StopStyle};
+use raz_wire::{Dialect, Meter as UsageMeter, RateCard, SseDecoder, Usage};
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -58,6 +58,7 @@ pub struct Proxy {
     shadow_notes: Arc<Mutex<Vec<ShadowCmp>>>,
     ledger: Option<Arc<raz_ledger::Ledger>>,
     capture: Option<Arc<raz_ledger::CaptureStore>>,
+    rates: Option<RateCard>,
 }
 
 impl Proxy {
@@ -89,7 +90,23 @@ impl Proxy {
             shadow_notes: Arc::new(Mutex::new(Vec::new())),
             ledger: None,
             capture: None,
+            rates: None,
         })
+    }
+
+    pub fn with_budget(
+        mut self,
+        ceiling_micros: u64,
+        rates: RateCard,
+        voucher_share: Option<f64>,
+    ) -> Self {
+        let mut arena = Arena::new().with_default_ceiling_micros(ceiling_micros);
+        if let Some(s) = voucher_share {
+            arena = arena.with_voucher_share(s);
+        }
+        self.arena = Arc::new(Mutex::new(arena));
+        self.rates = Some(rates);
+        self
     }
 
     pub fn with_ledger(mut self, ledger: Arc<raz_ledger::Ledger>) -> Self {
@@ -163,7 +180,7 @@ impl Proxy {
                     .collect::<String>()
             )
         });
-        {
+        let admission = {
             let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
             arena.task_mut(&node.root).begin(&node, None);
             crate::log::log(format!(
@@ -175,6 +192,26 @@ impl Proxy {
                 node.source.confidence(),
                 parts.uri.path()
             ));
+            match self.rates {
+                Some(rates) => arena.task_mut(&node.root).admit_at(&node, &rates),
+                None => Admission::Allow,
+            }
+        };
+        if let Admission::Deny {
+            spent_micros,
+            ceiling_micros,
+        } = admission
+        {
+            let style = {
+                let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
+                arena.task_mut(&node.root).take_stop()
+            };
+            self.finish_node(&node, true, None);
+            crate::log::log(format!(
+                "raz: stop {:?} spent={spent_micros} ceiling={ceiling_micros}",
+                style
+            ));
+            return Ok(stop_response(style, &parts.headers));
         }
 
         // Unknown paths still get the Anthropic meter: Claude Code has used
@@ -420,12 +457,61 @@ fn rewrite_uri(upstream: &Uri, req_uri: &Uri) -> Result<Uri, BoxError> {
     Ok(Uri::from_parts(parts)?)
 }
 
+const SYNTHETIC_MARK: &str =
+    "[raz] task ceiling reached; this turn was ended by the flight recorder.";
+
+fn boxed_full(b: Bytes) -> RelayBody {
+    Full::new(b)
+        .map_err(|never: Infallible| -> BoxError { match never {} })
+        .boxed()
+}
+
+fn stop_response(style: StopStyle, headers: &hyper::HeaderMap) -> Response<RelayBody> {
+    match style {
+        StopStyle::SyntheticEndTurn => {
+            let text = serde_json::to_string(SYNTHETIC_MARK).unwrap_or_else(|_| "\"[raz]\"".into());
+            let body = format!(
+                "event: message_start\ndata: {{\"type\":\"message_start\",\"message\":{{\"id\":\"raz_stop\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"raz\"}}}}\n\n\
+event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{{\"type\":\"text\",\"text\":\"\"}}}}\n\n\
+event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"text_delta\",\"text\":{text}}}}}\n\n\
+event: content_block_stop\ndata: {{\"type\":\"content_block_stop\",\"index\":0}}\n\n\
+event: message_delta\ndata: {{\"type\":\"message_delta\",\"delta\":{{\"stop_reason\":\"end_turn\"}},\"usage\":{{\"output_tokens\":0}}}}\n\n\
+event: message_stop\ndata: {{\"type\":\"message_stop\"}}\n\n"
+            );
+            let mut resp = Response::new(boxed_full(Bytes::from(body)));
+            *resp.status_mut() = StatusCode::OK;
+            resp.headers_mut().insert(
+                hyper::header::CONTENT_TYPE,
+                HeaderValue::from_static("text/event-stream"),
+            );
+            resp.headers_mut()
+                .insert("x-raz-stop", HeaderValue::from_static("synthetic-end-turn"));
+            resp
+        }
+        StopStyle::RetryableFalse429 | StopStyle::PaymentRequired402 => {
+            let claude = headers.get("x-claude-code-session-id").is_some();
+            let (status, kind) = if claude || matches!(style, StopStyle::RetryableFalse429) {
+                (StatusCode::TOO_MANY_REQUESTS, "429-retry-false")
+            } else {
+                (StatusCode::PAYMENT_REQUIRED, "402")
+            };
+            let mut resp = Response::new(boxed_full(Bytes::from_static(
+                b"{\"error\":\"raz ceiling\"}\n",
+            )));
+            *resp.status_mut() = status;
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                resp.headers_mut()
+                    .insert("x-should-retry", HeaderValue::from_static("false"));
+            }
+            resp.headers_mut()
+                .insert("x-raz-stop", HeaderValue::from_static(kind));
+            resp
+        }
+    }
+}
+
 fn hello_ok() -> Response<RelayBody> {
-    let mut resp = Response::new(
-        Full::new(Bytes::from_static(br#"{"status":"ok"}"#))
-            .map_err(|never: Infallible| -> BoxError { match never {} })
-            .boxed(),
-    );
+    let mut resp = Response::new(boxed_full(Bytes::from_static(br#"{"status":"ok"}"#)));
     *resp.status_mut() = StatusCode::OK;
     resp.headers_mut().insert(
         hyper::header::CONTENT_TYPE,
@@ -435,11 +521,7 @@ fn hello_ok() -> Response<RelayBody> {
 }
 
 fn gateway_error() -> Response<RelayBody> {
-    let mut resp = Response::new(
-        Full::new(Bytes::from_static(b"bad gateway\n"))
-            .map_err(|never: Infallible| -> BoxError { match never {} })
-            .boxed(),
-    );
+    let mut resp = Response::new(boxed_full(Bytes::from_static(b"bad gateway\n")));
     *resp.status_mut() = StatusCode::BAD_GATEWAY;
     resp
 }

@@ -62,6 +62,9 @@ struct Node {
     requests: u32,
     incomplete: u32,
     depth: u8,
+    /// Voucher minted from the parent. `None` means inherit the root ceiling.
+    allowance_micros: Option<u64>,
+    sealed: bool,
 }
 
 /// One root task and everything spawned beneath it.
@@ -74,6 +77,9 @@ pub struct Task {
     sealed: bool,
     peak_concurrency: u32,
     live: u32,
+    /// 0.0–1.0. Each new child is minted this fraction of the parent's remaining voucher.
+    voucher_share: Option<f64>,
+    synthetic_sent: bool,
 }
 
 impl Task {
@@ -90,6 +96,8 @@ impl Task {
                 requests: 0,
                 incomplete: 0,
                 depth: 0,
+                allowance_micros: None,
+                sealed: false,
             },
         );
         Self {
@@ -100,11 +108,21 @@ impl Task {
             sealed: false,
             peak_concurrency: 0,
             live: 0,
+            voucher_share: None,
+            synthetic_sent: false,
         }
     }
 
     pub fn with_ceiling_micros(mut self, micros: u64) -> Self {
         self.ceiling_micros = Some(micros);
+        if let Some(n) = self.nodes.get_mut(&self.root) {
+            n.allowance_micros = Some(micros);
+        }
+        self
+    }
+
+    pub fn with_voucher_share(mut self, share: f64) -> Self {
+        self.voucher_share = Some(share.clamp(0.0, 1.0));
         self
     }
 
@@ -129,6 +147,8 @@ impl Task {
                 requests: 0,
                 incomplete: 0,
                 depth,
+                allowance_micros: None,
+                sealed: false,
             },
         );
         self.order.push(node.to_string());
@@ -138,8 +158,108 @@ impl Task {
     /// fan-out visible as it happens rather than in hindsight.
     pub fn begin(&mut self, at: &NodeRef, label: Option<&str>) {
         self.ensure(&at.node, at.parent.as_deref(), label);
+        self.mint_voucher(at);
         self.live += 1;
         self.peak_concurrency = self.peak_concurrency.max(self.live);
+    }
+
+    fn mint_voucher(&mut self, at: &NodeRef) {
+        let Some(share) = self.voucher_share else {
+            return;
+        };
+        if at.is_root() {
+            return;
+        }
+        if self
+            .nodes
+            .get(&at.node)
+            .and_then(|n| n.allowance_micros)
+            .is_some()
+        {
+            return;
+        }
+        let parent_id = at.parent.as_deref().unwrap_or(self.root.as_str());
+        let parent_allow = self.allowance_of(parent_id);
+        let minted: u64 = self
+            .children_of(parent_id)
+            .into_iter()
+            .filter(|c| *c != at.node.as_str())
+            .filter_map(|c| self.nodes.get(c).and_then(|n| n.allowance_micros))
+            .sum();
+        let remaining = parent_allow.saturating_sub(minted);
+        let allot = (remaining as f64 * share).floor() as u64;
+        if let Some(n) = self.nodes.get_mut(&at.node) {
+            n.allowance_micros = Some(allot);
+        }
+    }
+
+    pub fn allowance_of(&self, id: &str) -> u64 {
+        self.nodes
+            .get(id)
+            .and_then(|n| n.allowance_micros)
+            .or(self.ceiling_micros)
+            .unwrap_or(0)
+    }
+
+    pub fn subtree_spent_micros(&self, id: &str, rates: &RateCard) -> u64 {
+        let mut total = 0u64;
+        let mut stack = vec![id];
+        let mut seen = std::collections::HashSet::new();
+        while let Some(cur) = stack.pop() {
+            if !seen.insert(cur) {
+                continue;
+            }
+            if let Some(n) = self.nodes.get(cur) {
+                total = total.saturating_add(n.usage.micros(rates));
+            }
+            for c in self.children_of(cur) {
+                stack.push(c);
+            }
+        }
+        total
+    }
+
+    /// Admit a request at a specific node. Root ceiling still binds the tree.
+    pub fn admit_at(&mut self, at: &NodeRef, rates: &RateCard) -> Admission {
+        let root_ad = self.admit(rates);
+        if !matches!(root_ad, Admission::Allow) {
+            return root_ad;
+        }
+        let cap = self.allowance_of(&at.node);
+        if cap == 0 && self.ceiling_micros.is_none() {
+            return Admission::Allow;
+        }
+        let spent = self.subtree_spent_micros(&at.node, rates);
+        let node_sealed = self.nodes.get(&at.node).map(|n| n.sealed).unwrap_or(false);
+        if node_sealed {
+            return Admission::Deny {
+                spent_micros: spent,
+                ceiling_micros: cap,
+            };
+        }
+        if spent >= cap
+            && self
+                .nodes
+                .get(&at.node)
+                .and_then(|n| n.allowance_micros)
+                .is_some()
+        {
+            if let Some(n) = self.nodes.get_mut(&at.node) {
+                n.sealed = true;
+            }
+            return Admission::Last;
+        }
+        Admission::Allow
+    }
+
+    /// First stop is a synthetic end_turn; later stops are the hard status.
+    pub fn take_stop(&mut self) -> StopStyle {
+        if !self.synthetic_sent {
+            self.synthetic_sent = true;
+            StopStyle::SyntheticEndTurn
+        } else {
+            StopStyle::RetryableFalse429
+        }
     }
 
     /// Called when a request finishes. `complete` is false when the terminal
@@ -316,6 +436,7 @@ pub struct NodeReport {
 pub struct Arena {
     tasks: HashMap<String, Task>,
     default_ceiling: Option<u64>,
+    voucher_share: Option<f64>,
 }
 
 impl Arena {
@@ -328,14 +449,23 @@ impl Arena {
         self
     }
 
+    pub fn with_voucher_share(mut self, share: f64) -> Self {
+        self.voucher_share = Some(share.clamp(0.0, 1.0));
+        self
+    }
+
     pub fn task_mut(&mut self, root: &str) -> &mut Task {
         let default = self.default_ceiling;
+        let share = self.voucher_share;
         self.tasks.entry(root.to_string()).or_insert_with(|| {
-            let t = Task::new(root);
-            match default {
-                Some(c) => t.with_ceiling_micros(c),
-                None => t,
+            let mut t = Task::new(root);
+            if let Some(c) = default {
+                t = t.with_ceiling_micros(c);
             }
+            if let Some(s) = share {
+                t = t.with_voucher_share(s);
+            }
+            t
         })
     }
 
@@ -567,6 +697,58 @@ mod tests {
         }
         assert_eq!(a.task_mut("s9").admit(&rates()), Admission::Last);
         assert_eq!(a.len(), 1);
+    }
+
+    #[test]
+    fn voucher_children_cannot_sum_past_parent_remaining() {
+        let mut t = Task::new("s1")
+            .with_ceiling_micros(1_000_000)
+            .with_voucher_share(0.3);
+        let a = node("s1", "a", Some("s1"));
+        let b = node("s1", "b", Some("s1"));
+        t.begin(&a, None);
+        t.begin(&b, None);
+        let aa = t.allowance_of("a");
+        let bb = t.allowance_of("b");
+        assert_eq!(aa, 300_000);
+        assert_eq!(bb, 210_000);
+        assert!(aa + bb <= 1_000_000);
+        // Even a greedy 100% share on a grandchild stays inside the child's voucher.
+        let mut t = Task::new("s1")
+            .with_ceiling_micros(1_000_000)
+            .with_voucher_share(1.0);
+        t.begin(&a, None);
+        let c = node("s1", "c", Some("a"));
+        t.begin(&c, None);
+        assert_eq!(t.allowance_of("a"), 1_000_000);
+        assert_eq!(t.allowance_of("c"), 1_000_000);
+        assert!(t.allowance_of("a") + t.allowance_of("s1") >= t.allowance_of("c"));
+    }
+
+    #[test]
+    fn admit_at_seals_a_child_without_sealing_the_root() {
+        let mut t = Task::new("s1")
+            .with_ceiling_micros(1_000_000)
+            .with_voucher_share(0.3);
+        let a = node("s1", "a", Some("s1"));
+        t.begin(&a, None);
+        t.finish(&a, &out(5_000), true); // 375_000 micros > 300_000 voucher
+        assert_eq!(t.admit_at(&a, &rates()), Admission::Last);
+        match t.admit_at(&a, &rates()) {
+            Admission::Deny { .. } => {}
+            other => panic!("{other:?}"),
+        }
+        let main = node("s1", "s1", None);
+        assert_eq!(t.admit_at(&main, &rates()), Admission::Allow);
+        assert!(!t.is_sealed());
+    }
+
+    #[test]
+    fn take_stop_is_synthetic_then_hard() {
+        let mut t = Task::new("s1").with_ceiling_micros(1);
+        assert_eq!(t.take_stop(), StopStyle::SyntheticEndTurn);
+        assert_eq!(t.take_stop(), StopStyle::RetryableFalse429);
+        assert_eq!(t.take_stop(), StopStyle::RetryableFalse429);
     }
 
     #[test]

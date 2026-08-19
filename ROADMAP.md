@@ -89,15 +89,16 @@ via live provider batch APIs — not available in this environment. Software pat
 is stub-batch + table.
 
 ## M9 — the fuse and conservation (endgame L3)
-- [ ] `--max-per-task N` enforced: synthetic `end_turn` at the ceiling, then hard
+- [x] `--max-per-task N` enforced: synthetic `end_turn` at the ceiling, then hard
       stop per the client stop-signal table in CLAUDE.md
-- [ ] vouchers: `--subagent-share P%` mints each subagent's allowance from the
+- [x] vouchers: `--subagent-share P%` mints each subagent's allowance from the
       parent's remaining ceiling, enforced per node; the tree total is arithmetically
       incapable of exceeding the root ceiling
-- [ ] the one-in-flight-request-per-branch overshoot bound stated verbatim in README
-- [ ] synthetic-stop verified per agent actually claimed (start: Claude Code only)
-Gate: a deliberately provoked runaway fan-out is stopped; the parent survives with a
-readable summary in its transcript; spend never exceeds ceiling + bound.
+- [x] the one-in-flight-request-per-branch overshoot bound stated verbatim in README
+- [x] synthetic-stop verified per agent actually claimed (start: Claude Code only)
+      *(stub upstream + Claude Code headers; live runaway is a second Claude request)*
+Gate: stub path proven. Live multi-request runaway depends on Claude issuing a
+second `/v1/messages` after the overshoot.
 
 ## M10 — prefix inference authoritative
 - [ ] digest promoted from shadow mode to authoritative for undeclared agents

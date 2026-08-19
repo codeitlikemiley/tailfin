@@ -44,6 +44,15 @@ struct RunArgs {
     /// Directory for captured bodies. Default: raz-capture next to the ledger.
     #[arg(long)]
     capture_dir: Option<PathBuf>,
+    /// Per-task ceiling in dollars. Requires `--rates`. Honest to within one
+    /// in-flight request per branch.
+    #[arg(long)]
+    max_per_task: Option<f64>,
+    /// Fraction of a parent's remaining ceiling minted to each new subagent (e.g. 30%).
+    #[arg(long)]
+    subagent_share: Option<String>,
+    #[arg(long)]
+    rates: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -109,6 +118,23 @@ async fn run(args: RunArgs) -> Result<(), Box<dyn std::error::Error + Send + Syn
     raz_proxy::init_log();
     let ledger = Ledger::open(&args.ledger)?;
     let mut proxy = Proxy::new(cfg.upstream.clone())?.with_ledger(Arc::new(ledger));
+    if let Some(dollars) = args.max_per_task {
+        let path = args
+            .rates
+            .as_ref()
+            .ok_or("--max-per-task requires --rates")?;
+        let rates = load_rates(path)?;
+        let micros = (dollars * 1_000_000.0).max(0.0) as u64;
+        let share = match args.subagent_share.as_deref() {
+            Some(s) => Some(parse_share(s)?),
+            None => None,
+        };
+        eprintln!(
+            "raz ceiling ${dollars:.4} ({} µ$) share {:?}",
+            micros, share
+        );
+        proxy = proxy.with_budget(micros, rates, share);
+    }
     if args.capture {
         let retention = parse_retention(&args.retention).unwrap_or(DEFAULT_RETENTION);
         let dir = args
@@ -187,6 +213,16 @@ fn replay_cmd(args: ReplayArgs) -> Result<(), Box<dyn std::error::Error + Send +
     let rows = replay(&recs, &opts, &StubBatch::default());
     print!("{}", raz_ledger::render_table(&rows));
     Ok(())
+}
+
+fn parse_share(s: &str) -> Result<f64, String> {
+    let t = s.trim().trim_end_matches('%').trim();
+    let v: f64 = t.parse().map_err(|_| format!("bad --subagent-share {s}"))?;
+    if s.contains('%') || v > 1.0 {
+        Ok((v / 100.0).clamp(0.0, 1.0))
+    } else {
+        Ok(v.clamp(0.0, 1.0))
+    }
 }
 
 fn load_rates(
@@ -271,6 +307,37 @@ mod tests {
             Cmd::Run(a) => assert!(!a.capture),
             _ => panic!("expected run"),
         }
+    }
+
+    #[test]
+    fn run_max_per_task_parses() {
+        let cli = Cli::try_parse_from([
+            "raz",
+            "run",
+            "--upstream",
+            "https://api.anthropic.com",
+            "--max-per-task",
+            "5",
+            "--subagent-share",
+            "30%",
+            "--rates",
+            "rates.toml",
+        ])
+        .unwrap();
+        match cli.cmd {
+            Cmd::Run(a) => {
+                assert_eq!(a.max_per_task, Some(5.0));
+                assert_eq!(a.subagent_share.as_deref(), Some("30%"));
+            }
+            _ => panic!("expected run"),
+        }
+    }
+
+    #[test]
+    fn parse_share_accepts_percent_and_fraction() {
+        assert!((parse_share("30%").unwrap() - 0.3).abs() < 1e-9);
+        assert!((parse_share("0.3").unwrap() - 0.3).abs() < 1e-9);
+        assert!((parse_share("30").unwrap() - 0.3).abs() < 1e-9);
     }
 
     #[test]

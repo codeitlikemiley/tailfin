@@ -1276,4 +1276,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&cap);
         let _ = std::fs::remove_file(&led);
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn over_budget_gets_synthetic_then_claude_code_hard_stop() {
+        let hits = Arc::new(Mutex::new(0u32));
+        let hits2 = hits.clone();
+        let stub = spawn_http_server(move |_req| {
+            let hits = hits2.clone();
+            async move {
+                *hits.lock().unwrap() += 1;
+                Response::builder()
+                    .header("content-type", "text/event-stream")
+                    .body(Full::new(Bytes::from_static(ANTHROPIC_SSE)))
+                    .unwrap()
+            }
+        })
+        .await;
+        let rates = raz_wire::RateCard::from_base(15_000_000, 75_000_000);
+        let (addr, shutdown, handle, _) =
+            spawn_proxy_cfg(stub, move |p| p.with_budget(0, rates, None)).await;
+        let h = claude_headers("sess-fuse", None, None);
+        let b = Bytes::from_static(br#"{"model":"x","messages":[{"role":"user","content":"go"}]}"#);
+        let first = send(addr, Method::POST, "/v1/messages", h.clone(), b.clone()).await;
+        assert_eq!(first.status, StatusCode::OK);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        let second = send(addr, Method::POST, "/v1/messages", h.clone(), b.clone()).await;
+        let body = String::from_utf8_lossy(&second.body);
+        assert!(
+            body.contains("end_turn") && body.contains("[raz]"),
+            "{body}"
+        );
+        assert_eq!(
+            second
+                .headers
+                .get("x-raz-stop")
+                .and_then(|v| v.to_str().ok()),
+            Some("synthetic-end-turn")
+        );
+        let third = send(addr, Method::POST, "/v1/messages", h, b).await;
+        assert_eq!(third.status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            third
+                .headers
+                .get("x-should-retry")
+                .and_then(|v| v.to_str().ok()),
+            Some("false")
+        );
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+        assert_eq!(
+            *hits.lock().unwrap(),
+            1,
+            "only the Last overshoot request may hit upstream"
+        );
+    }
 }

@@ -53,6 +53,10 @@ Cost is knowable only after a response completes, so any
 ceiling is hard only to within one in-flight request per branch. `Admission::Last`
 encodes this. Every user-facing mention of budgets states it plainly.
 
+`--max-per-task 5.00 --rates rates.toml` enforces that bound. `--subagent-share 30%`
+mints each subagent's allowance from the parent's remaining ceiling so the tree
+cannot arithmetically exceed the root.
+
 Claude Code under subscription auth (`ANTHROPIC_BASE_URL` set, no API key): traffic
 passes through raz but billing follows the subscription's opaque quota. We meter
 tokens; we do not see their bill. Never claim otherwise.
