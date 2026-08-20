@@ -72,3 +72,4 @@ aider is still unmeasured.
 ## Status
 
 Approved 2026-08-20. The 2+ day dogfood checkbox was skipped 2026-08-20.
+Progress after that day is [STATUS.md](../STATUS.md), not this file.

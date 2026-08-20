@@ -1,5 +1,7 @@
 # Prefix inference — measured false-merge / false-split
 
+Field facts belong here; the queue is [STATUS.md](../STATUS.md).
+
 Measured 2026-08-20 against the in-repo synthetic corpus in
 `tailfin-ident::false_merge_and_split_rates_on_synthetic_traffic`. Minimum prefix
 match depth is 2 (`SessionIndex` `min_level_idx = 1` → `LEVELS[1] = 2`).

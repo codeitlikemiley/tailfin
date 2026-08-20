@@ -1,6 +1,8 @@
 # tailfin — positioning
 
-*Drop into the repo as docs/positioning.md. The hero block at the bottom is paste-ready for the README. Written 2026-08-19; the stats cited are from this project's own research and one measured session — refresh them with your own numbers before launch.*
+*Claims we may and may not make. Hero block is paste-ready for the README.
+Written 2026-08-19; launch numbers live in docs/launch.md. Progress is
+[STATUS.md](../STATUS.md).*
 
 ---
 

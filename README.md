@@ -25,7 +25,7 @@ Prebuilt binaries from [GitHub Releases](https://github.com/codeitlikemiley/tail
 curl -fsSL https://github.com/codeitlikemiley/tailfin/releases/latest/download/install.sh | bash
 ```
 
-Pin a tag with `TAILFIN_VERSION=v0.1.1`. Homebrew:
+Pin a tag with `TAILFIN_VERSION=v0.1.2`. Homebrew:
 
 ```sh
 brew tap codeitlikemiley/tailfin https://github.com/codeitlikemiley/tailfin
@@ -372,6 +372,15 @@ Never summed into one number.
 
 A stream that never delivered its terminal usage frame is recorded as incomplete —
 never silently counted as zero.
+
+## Docs
+
+| file | when |
+|---|---|
+| [STATUS.md](STATUS.md) | resume a session; the queue |
+| [CLAUDE.md](CLAUDE.md) | invariants |
+| [ROADMAP.md](ROADMAP.md) | M0–M12 archive |
+| [docs/](docs/) | architecture, launch numbers, prefix measurements |
 
 ## License
 
