@@ -13,6 +13,12 @@ Live `tailfin-proxy` repeats the same rules on undeclared bodies: a continuation
 joins; a shared first message alone does not. Declared headers (Claude Code,
 Codex) still take precedence.
 
-BLOCKED: an aider or opencode session through tailfin with zero declared headers
-has not been run in this environment. Tune `with_min_level` against that
-traffic before treating these rates as field measurements.
+Live 2026-08-20: **opencode** (no Claude/Codex headers) hit
+`/v1/chat/completions` through tailfin. First request of the session:
+`declared=false`, prefix digest compared, `conf=0.25`, root `inferred-000001`.
+That is the undeclared path. A continuation at depth ≥ 2 was not observed
+(the stream hung incomplete on MiniMax-M3 / tokenrouter). Synthetic 0/32
+rates still stand; field `with_min_level` tuning still wants a second turn.
+
+**Codex** is the *declared* path, not this table: `conf=1.00` on
+`/v1/responses`. It is not evidence for prefix inference.

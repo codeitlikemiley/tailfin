@@ -34,4 +34,7 @@ project renamed raz→tailfin on 2026-08-20.
 2026-08-20 10:00 — release — bump 0.1.0 → 0.1.1 (CI publish + formula placeholders) — next: tag v0.1.1
 2026-08-20 10:10 — release — v0.1.1 tagged; GitHub Release + crates.io via Actions (all six crates 0.1.1); formula sha256s in #5 — next: 2-day dogfood
 2026-08-20 10:20 — docs — catch stale "M9 will ship" / prefix-is-shadow / week-one-as-todo; historical JOURNAL and week-one plan left as record — next: 2-day dogfood
+2026-08-20 10:25 — skip — dogfood, M8 live replay, M11 stamp PR, L5 telemetry — next: opencode+Codex through rebuilt tailfin, M12 public LiteLLM
+2026-08-20 10:40 — M10 — Codex exec pong via :7171→:8080 declared conf=1.00; WS /v1/responses 404 then HTTPS fallback; usage not metered (Responses not a dialect). opencode MiniMax via :7172→tokenrouter declared=false digest conf=0.25 inferred-000001; stream incomplete. — next: M12 doctor
+2026-08-20 10:41 — M12 — doctor on BerriAI/litellm proxy_server_config.yaml → budget-fallback-no-floor (context_window_fallbacks, no floor). Same on oai_misc_config.yaml. — next: none queued
 
