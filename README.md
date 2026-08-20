@@ -32,6 +32,12 @@ brew tap codeitlikemiley/tailfin https://github.com/codeitlikemiley/tailfin
 brew install tailfin
 ```
 
+From crates.io (compiles locally):
+
+```sh
+cargo install tailfin
+```
+
 From this repo (`cargo build -p tailfin --release`):
 
 ```sh

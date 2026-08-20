@@ -534,6 +534,9 @@ mod tests {
     fn share_mode_from_ledger_file_redacts_paths_and_uuids() {
         let path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/share-ledger.jsonl");
+        if !path.exists() {
+            return; // workspace fixture; absent from the crates.io package
+        }
         let records = Ledger::read_all(&path).unwrap();
         assert_eq!(
             records.len(),

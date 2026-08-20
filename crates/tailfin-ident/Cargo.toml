@@ -4,4 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Task identity inference from LLM wire traffic"
+keywords = ["llm", "agents", "identity"]
+categories = ["development-tools"]

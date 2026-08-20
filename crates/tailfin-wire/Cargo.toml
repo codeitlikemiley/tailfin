@@ -4,7 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Incremental SSE decoding and provider-agnostic usage extraction"
+keywords = ["llm", "sse", "tokens"]
+categories = ["development-tools"]
 
 [dependencies]
 serde_json = { workspace = true }
