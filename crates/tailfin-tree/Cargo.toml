@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Task tree arena with live cost roll-up"
+keywords = ["llm", "agents", "cost"]
+categories = ["development-tools"]
 
 [dependencies]
-tailfin-ident = { path = "../tailfin-ident" }
-tailfin-wire  = { path = "../tailfin-wire" }
+tailfin-ident = { workspace = true }
+tailfin-wire = { workspace = true }

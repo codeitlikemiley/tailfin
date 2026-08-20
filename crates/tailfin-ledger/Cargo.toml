@@ -4,11 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "Append-only JSONL ledger for per-request observation"
+keywords = ["llm", "agents", "ledger"]
+categories = ["development-tools"]
 
 [dependencies]
-tailfin-ident = { path = "../tailfin-ident" }
-tailfin-tree = { path = "../tailfin-tree" }
-tailfin-wire = { path = "../tailfin-wire" }
+tailfin-ident = { workspace = true }
+tailfin-tree = { workspace = true }
+tailfin-wire = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

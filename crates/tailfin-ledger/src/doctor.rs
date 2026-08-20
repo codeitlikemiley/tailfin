@@ -137,7 +137,9 @@ general_settings:
     fn committed_fixture_file_triggers_the_three_rules() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/gateway-litellm.yaml");
-        let raw = std::fs::read_to_string(&path).expect("fixture");
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return; // workspace fixture; absent from the crates.io package
+        };
         let f = diagnose(&raw);
         assert_eq!(f.len(), 3, "{f:?}");
     }
