@@ -9,7 +9,7 @@
 > **tailfin — the flight recorder for AI agents.**
 > *`tail -f` for everything your agent did while you weren't looking.*
 
-Durable, instantly graspable, and honest about v0.1 (it observes; it doesn't yet enforce). When M9 ships, the natural extension is already loaded: *"…and the circuit breaker."* A flight recorder is also exactly the right trust posture — neutral, always-on, and nobody argues with what it recorded.
+Durable, instantly graspable, and honest about v0.1 (it observes by default; `--max-per-task` is the circuit breaker). A flight recorder is also exactly the right trust posture — neutral, always-on, and nobody argues with what it recorded.
 
 Runners-up, kept for different surfaces:
 
@@ -26,13 +26,13 @@ The launch post is a different artifact from the tagline and follows the measure
 
 ## The USP, at three depths
 
-**One line.** tailfin is the only tool that can draw a boundary — and soon a ceiling — around a *task* inside an agent nobody modified.
+**One line.** tailfin is the only tool that can draw a boundary — and, with `--max-per-task`, a ceiling — around a *task* inside an agent nobody modified.
 
 **One paragraph.** Every cost tool on the market is either a file parser locked to one vendor (ccusage, codeburn read `~/.claude/` and see nothing else) or a gateway that budgets by API key, user, or calendar month (LiteLLM, Portkey, Cloudflare, Anthropic's own console). None of them knows what a *task* is, so none can answer the only questions that matter: *what did this job cost, which subagent burned it, and how do I stop the next one at $5?* tailfin sits on the wire, infers the task tree from traffic alone — declared headers where agents publish them, prefix inference where they don't — and answers all three. One environment variable to install. Any agent, any provider, any local model. Everything stays on your machine.
 
 **One page — why each audience says yes.**
 
-*The solo developer* has watched a single prompt spawn subagents and eat a week of quota, and their current tool reports a dollar total with no tree. tailfin shows how much of the session was work they never saw, names the subagent, and (from M9) refuses to let it happen again. No account, no SDK, no database, no telemetry — one env var and it works, including against Ollama where no other cost tool even applies.
+*The solo developer* has watched a single prompt spawn subagents and eat a week of quota, and their current tool reports a dollar total with no tree. tailfin shows how much of the session was work they never saw, names the subagent, and with `--max-per-task` refuses to let it happen again. No account, no SDK, no database, no telemetry — one env var and it works, including against Ollama where no other cost tool even applies.
 
 *The team lead* runs a mixed shop — some people on Claude Code, some on Cursor, one holdout on aider — which makes every vendor-locked parser useless and every key-scoped gateway blind to what actually happened inside a key. tailfin attributes by task across the whole toolchain, with a confidence figure attached to every attribution, and the ledger is a local file the team can actually query.
 
@@ -72,7 +72,7 @@ These come from this project's own verification work; violating them burns the t
 Your coding agent spawns subagents you never see, and they spend most of your money.
 tailfin sits between any agent and any provider — one environment variable, no SDK, no
 account — and shows you the whole task tree: what each job cost, which subagent burned
-it, and how deep the fan-out went. Soon: stop any task at a ceiling you set.
+it, and how deep the fan-out went. Opt-in: `--max-per-task` stops a task at a ceiling you set.
 
     ANTHROPIC_BASE_URL=http://localhost:7171   # Claude Code
     OPENAI_BASE_URL=http://localhost:7171/v1   # Codex, aider, opencode, Cline, local models

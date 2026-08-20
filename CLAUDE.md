@@ -9,7 +9,7 @@ agent, a trace-id header, a hosted harness). None can draw a boundary around an 
 coding agent that just opens an HTTPS connection. tailfin draws it anyway. Everything else is
 downstream of that.
 
-v0.1 is **observation only**: task tree + fan-out ledger + report. No enforcement until M9.
+v0.1 **defaults to observation**: task tree + fan-out ledger + report. `--max-per-task` (M9) is opt-in enforcement.
 
 ## Invariants — violating any of these is a bug, whatever the tests say
 
@@ -36,9 +36,11 @@ v0.1 is **observation only**: task tree + fan-out ledger + report. No enforcemen
    they trust.
 8. **A shared system prompt alone must never merge two sessions.** Minimum prefix
    match depth is 2. There is a test for this; it stays.
-9. **Ship binaries, never a compile step.** Release = prebuilt macOS arm64/x64 +
-   Linux x64, an install script, a Homebrew tap. `cargo install --git` as the only
-   path is a launch-killer (measured: tools that required it died at ~50 stars).
+9. **Ship binaries, never a compile step as the only path.** Release = prebuilt
+   macOS arm64/x64 + Linux x64, an install script, a Homebrew tap. crates.io
+   (`cargo install tailfin`) is a secondary compile-from-source option. `cargo
+   install --git` as the *only* path is a launch-killer (measured: tools that
+   required it died at ~50 stars).
 
 ## Crate map and dependency rules
 
@@ -47,15 +49,15 @@ v0.1 is **observation only**: task tree + fan-out ledger + report. No enforcemen
 | tailfin-ident | task identity: header parsing + rolling prefix digest | none |
 | tailfin-wire | incremental SSE decode + usage extraction | serde_json only |
 | tailfin-tree | task arena, roll-up, admission | none beyond siblings |
-| tailfin-proxy | hyper/tokio relay + tee (M1–M2) | tokio, hyper, rustls |
-| tailfin-ledger | append-only JSONL, later SQLite (M5) | rusqlite (later) |
-| tailfin | `tailfin run`, `tailfin report` (M5) | clap |
+| tailfin-proxy | hyper/tokio relay + tee | tokio, hyper, rustls |
+| tailfin-ledger | append-only JSONL (capture/replay/stamp/doctor) | none beyond siblings |
+| tailfin | `run` `report` `replay` `stamp` `blame` `doctor` | clap |
 
 The three core crates stay free of HTTP, async, and I/O forever — that is what makes
 them testable without a socket and reusable as cdylib/wasm later. New heavy
 dependencies anywhere require a one-line justification in the commit message.
 
-## Client stop-signal table (for M9, and for docs before that)
+## Client stop-signal table (M9 fuse)
 
 | client | clean stop | without it |
 |---|---|---|

@@ -15,7 +15,7 @@ OPENAI_BASE_URL=http://localhost:7171/v1   # Codex, aider, opencode, Cline, loca
 
 Works with the tools you already use. Everything stays on your machine. No telemetry, ever.
 
-v0.1 observes. It does not enforce. The task is the unit.
+v0.1 observes by default. `--max-per-task` is opt-in. The task is the unit.
 
 ## Install
 

@@ -34,8 +34,8 @@ ANTHROPIC_BASE_URL=http://localhost:7171 claude
 tailfin report --share
 ```
 
-v0.1 observes. It does not enforce. When a per-task ceiling ships, it will be
-hard only to within one in-flight request per branch.
+v0.1 defaults to observation. `--max-per-task` is opt-in; a ceiling is hard only
+to within one in-flight request per branch.
 
 ## What these numbers are
 
@@ -65,7 +65,9 @@ Cursor is not in the compatibility list. Desktop chat can take a custom base
 URL; background `cursor-agent` cannot.
 
 Identity is exact for Claude Code and Codex (declared headers). Prefix inference
-for everyone else is shadow-mode until later, and will carry a confidence figure.
+is live for undeclared agents (minimum shared depth 2) and carries a confidence
+figure. Field measurement on aider/opencode is still open — see
+docs/prefix-inference.md.
 
 ## Status
 
