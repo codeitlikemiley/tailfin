@@ -43,4 +43,5 @@ renamed raz→tailfin on 2026-08-20.
 2026-08-20 10:41 — M12 — doctor on BerriAI/litellm proxy_server_config.yaml → budget-fallback-no-floor (context_window_fallbacks, no floor). Same on oai_misc_config.yaml. — next: none queued
 2026-08-20 11:20 — docs — STATUS.md is the session handoff (queue, live agents, how to release); ROADMAP.md is the M0–M12 archive; JOURNAL append-only; architecture/endgame/launch point at STATUS. — next: cut v0.1.2
 2026-08-20 11:22 — release — bump 0.1.1 → 0.1.2 (Responses dialect, path-prefix join, HTTP WS). Formula sha256s placeholders until SHA256SUMS. — next: tag v0.1.2 after merge
+2026-08-20 12:55 — release — v0.1.2 tagged; GitHub Release (Intel upload retried after ENOTFOUND) + crates.io all six 0.1.2. Formula sha256s from SHA256SUMS. — next: none queued
 
