@@ -1,10 +1,10 @@
-# tailfin — architecture and week-one scope
+# tailfin — architecture
 
 *A Rust proxy that infers task structure from the wire. Solo developer day 1, enterprise later, same binary.*
 
-*Status 2026-08-20:* M0–M12 software is ticked on ROADMAP.md. Remaining work is
-the 2-day dogfood and the calendar gates, not this week-one plan. The day-by-day
-section below is the original plan, kept as the record of intent.
+**Progress lives in [STATUS.md](../STATUS.md).** This file is how the proxy is
+built. The day-by-day section at the bottom is the original week-one plan, kept
+as a record — it is not the queue.
 
 > **tailfin** — the flight recorder lives in the tail because that's what survives
 > a crash. `tail -f` for everything your agent did while you weren't looking.
@@ -47,8 +47,8 @@ tailfin/
 
 The three crates that carry the hard logic have no HTTP dependency, no async
 runtime, and no I/O — which is why they were testable before a single byte moved
-over a socket. `cargo test --workspace` is 115 passing. Classes/floors
-(`tailfin-policy`) were never a crate; they stay a later rung on the ladder.
+over a socket. Classes/floors (`tailfin-policy`) were never a crate; they stay
+a later rung on the ladder.
 
 ---
 
@@ -74,6 +74,37 @@ Ok(Response::from_parts(parts, teed))
 ```
 
 There are exactly **two** places tailfin generates bytes rather than relaying them: the synthetic stop, and the deny response. Everywhere else it is a wire.
+
+---
+
+## Wire dialects and hops
+
+`Dialect::for_path` picks a meter:
+
+| path | dialect | usage lands on |
+|---|---|---|
+| `/v1/messages` | Anthropic | `message_start` + `message_delta` |
+| `/v1/chat/completions` | OpenAI Chat | final chunk `usage` (`stream_options.include_usage`) |
+| `/v1/responses` | OpenAI Responses | `response.completed` (`input_tokens` / `output_tokens`) |
+
+`SseDecoder::finish()` flushes a leftover JSON body that never got SSE wrapping
+(OpenAI-compatible providers that close after one object).
+
+`rewrite_uri` **joins** the upstream path with the request path. OpenRouter is
+`https://openrouter.ai/api` + `/v1/chat/completions`. Replacing the path drops
+`/api` and 404s.
+
+Codex prefers `ws://…/v1/responses`. hyper-util's Client does not perform HTTP
+upgrades. HTTP upstreams are tunneled on a raw TCP socket
+(`crates/tailfin-proxy/src/ws.rs`); the server uses `with_upgrades()` and does
+not wrap connections in hyper-util `GracefulShutdown` (that trait is missing
+for `UpgradeableConnection`). HTTPS WebSocket is not implemented; Codex then
+uses SSE, which we meter. opencodex currently **disables** the Responses
+WebSocket (`426`, "use HTTP").
+
+Keep-alive is off on the listener because SSE + reused connections froze Claude
+Code after one reply. Content-Length is stripped on reboxed bodies for the same
+reason.
 
 ---
 
@@ -163,9 +194,10 @@ Rung 0 is the whole of week one. Rungs 3 and 4 are where the money is, and they 
 
 ---
 
-## Week one, day by day
+## Original week-one plan (record, not the queue)
 
-Realistic for one person at 40–60 focused hours. **Rung 0 only. No enforcement.**
+Written before M0. Realistic for one person at 40–60 focused hours.
+**Rung 0 only. No enforcement.** What actually shipped is STATUS.md / ROADMAP.md.
 
 | Day | Deliverable | Done when |
 |---|---|---|
@@ -176,11 +208,13 @@ Realistic for one person at 40–60 focused hours. **Rung 0 only. No enforcement
 | **6** | Release engineering | Prebuilt binaries for macOS arm64/x64 + Linux x64 via GitHub Actions. Install script. Homebrew tap. README |
 | **7** | Buffer, then launch | |
 
-### Cut list — everything below is explicitly *not* in week one
+### Cut from week one (what the plan withheld)
 
-TLS termination · config files · **all enforcement** · prefix-inferred sessions (declared headers only) · SQLite · any UI · Codex `wire_api = "chat"` · Gemini and Bedrock dialects · Windows binaries.
+TLS termination · config files · SQLite · any UI · Codex `wire_api = "chat"` ·
+Gemini and Bedrock dialects · Windows binaries.
 
-Prefix inference is the crown jewel and it is *still* cut from week one. It is week 2–3. Week one proves the proxy doesn't break anything and the fan-out number is real.
+Prefix inference and opt-in `--max-per-task` **did** ship after week one (M9,
+M10). Enforcement is still off by default.
 
 ### The launch post
 
@@ -195,15 +229,11 @@ Comparative framing travels (706 points for "Claude Code sends 33k tokens before
 
 ---
 
-## After week one
+## After week one (what that plan became)
 
-**Weeks 2–3 — prefix inference.** Turn on the digest for undeclared agents. This is what makes the claim "works with any agent" true rather than aspirational, and it is the defensible asset.
-
-**Week 4 — the fuse.** `--max-per-task 5.00`, synthetic stop, hard status. Ship the overshoot caveat in the README.
-
-**Weeks 5–8 — the conflict detector.** A `doctor` subcommand that reads an existing LiteLLM or gateway config and reports collisions: budget fallback chains with no tier floor, compression ratios that will evict prefixes from the persistent cache tier, memory plugins feeding compression plugins set to strip. Provably absent in every product I checked, each rule backed by a published measurement, and it needs no adoption of your runtime at all.
-
-**Month 3+ — classes and floors.** Rung 2 and 3. Only if rung 0 found people who care.
+Those rungs shipped as M9 (fuse), M10 (prefix), M12 (doctor). Classes/floors
+are still later, only if people care. Live calendar leftovers are in STATUS.md
+("Not queued").
 
 ---
 
@@ -219,8 +249,17 @@ Comparative framing travels (706 points for "Claude Code sends 33k tokens before
 
 ## Uncertain, flagged honestly
 
-1. **Codex's `x-codex-turn-metadata` was verified on the Responses API path only.** If a user configures `wire_api = "chat"`, I could not confirm the headers still ship. Test before designing around it.
-2. **The synthetic `end_turn` is untested in the wild.** It should work mechanically — Claude Code ends a turn on `stop_reason: end_turn` with no tool_use block — but no prior art exists, so verify per agent.
-3. **Prefix inference is unproven against real traffic.** The tests cover the logic; they do not tell you what the right minimum match depth is when fifty sessions share a 4,000-token system prompt. Expect to tune `with_min_level`, and expect that tuning to be the hardest empirical work in the project.
-4. **The 82% / 11.6× figures come from one session** — this one — priced at illustrative Opus-class list rates. The ratios are real token counts; the dollars are not a bill. Measure your own before you publish anyone else's.
-5. **Rate cards must be config, never constants.** Anthropic's own session budgets price at public list rates, so negotiated discounts make a cap fire early. Inherit that flaw knowingly or avoid it deliberately.
+1. **Codex `wire_api = "chat"`** is still unverified. Responses API headers
+   (`x-codex-turn-metadata` / `root_turn_id`) are live (`conf=1.00`).
+2. **The synthetic `end_turn` is untested in the wild.** Stub + Claude headers
+   pass. A real second `/v1/messages` after overshoot was not run.
+3. **Prefix inference in the field is one OpenCode one-shot** (`conf=0.25`,
+   complete). Synthetic 0/32 false-merge / false-split stands. A continuation at
+   depth ≥ 2, and aider, are unmeasured. Tune `with_min_level` against that, not
+   against the corpus alone.
+4. **The 82% / 11.6× figures come from an earlier research session.** Launch
+   numbers are in docs/launch.md (48% / 1.92×). Ratios are real token counts;
+   dollars are not a bill.
+5. **Rate cards must be config, never constants.** Anthropic's own session
+   budgets price at public list rates, so negotiated discounts make a cap fire
+   early. Inherit that flaw knowingly or avoid it deliberately.

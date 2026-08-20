@@ -373,6 +373,15 @@ Never summed into one number.
 A stream that never delivered its terminal usage frame is recorded as incomplete —
 never silently counted as zero.
 
+## Docs
+
+| file | when |
+|---|---|
+| [STATUS.md](STATUS.md) | resume a session; the queue |
+| [CLAUDE.md](CLAUDE.md) | invariants |
+| [ROADMAP.md](ROADMAP.md) | M0–M12 archive |
+| [docs/](docs/) | architecture, launch numbers, prefix measurements |
+
 ## License
 
 Apache-2.0. Copyright 2026 tailfin contributors. See [LICENSE](LICENSE).

@@ -1,11 +1,30 @@
-# tailfin roadmap — v0.1 = observe only
+# tailfin roadmap — M0–M12 archive
 
-Gate = the sentence that must be true before the milestone is ticked.
+**Start at [STATUS.md](STATUS.md).** That file is the queue. This file is the
+closed ladder: do not un-tick, do not add work here unless the human reopens a
+gate. Gate = the sentence that had to be true before the box was ticked.
 
-**Where we are (2026-08-20):** M0–M12 *software* is ticked. Skipped: 2-day
-dogfood, M8 live-week replay, M11 published-PR stamp, L5 telemetry. Closed
-live: M10 opencode (undeclared) + Codex (declared headers); M12 doctor on
-BerriAI/litellm `proxy_server_config.yaml`. Nothing else is queued.
+| | milestone | software | live / skip |
+|---|---|---|---|
+| M0 | bootstrap | shipped | tests on a clean clone |
+| M1 | proxy skeleton | shipped | curl byte-identical |
+| M2 | streaming + tee | shipped | Claude Code session |
+| M3 | identity | shipped | subagent tree vs transcript |
+| M4 | metering | shipped | usage vs provider frames |
+| M5 | ledger + report | shipped | 1.92× fan-out table |
+| M6 | release | shipped | install.sh, Homebrew, crates.io via CI |
+| M7 | launch pack | shipped | launch.md approved; **dogfood skipped** |
+| M8 | capture + replay | shipped (stub batch) | **live week skipped** |
+| M9 | fuse + vouchers | shipped | stub + Claude headers; live runaway unrun |
+| M10 | prefix inference | shipped | opencode undeclared + Codex declared |
+| M11 | stamp / blame | shipped | **published PR skipped** |
+| M12 | doctor | shipped | BerriAI/litellm public config |
+| L5 | actuarial | parked | human-only to unpark |
+
+Evidence for each box is below. Last facts (versions, agent runs, next tag)
+live in STATUS.md so they are not copied here to rot.
+
+---
 
 ## M0 — bootstrap  `[x]`
 - [x] extracted arbor workspace; renamed arbor→raz then raz→tailfin; tests green, clippy clean

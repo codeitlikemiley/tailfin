@@ -1,7 +1,10 @@
 # tailfin journal
 
-Historical entries below used the old name **raz** (arbor→raz at M0). The
-project renamed raz→tailfin on 2026-08-20.
+Append-only log. **Current state is [STATUS.md](STATUS.md).** Do not pick a
+"next" from this file.
+
+Historical entries used the old name **raz** (arbor→raz at M0). The project
+renamed raz→tailfin on 2026-08-20.
 
 2026-08-19 20:35 — M0 — extracted arbor workspace, renamed arbor→raz (crates, packages, identifiers, docs); 42 tests passing, clippy clean — next: M1 proxy skeleton
 2026-08-19 21:01 — M1 — raz-proxy: hyper/tokio relay on 127.0.0.1:7171, hop-by-hop strip, Host rewrite, graceful shutdown; JSON body byte-identical through vs direct (55 tests) — next: M2 streaming fidelity + tee
@@ -38,4 +41,5 @@ project renamed raz→tailfin on 2026-08-20.
 2026-08-20 10:40 — M10 — Codex exec pong via :7171→:8080 declared conf=1.00; WS /v1/responses 404 then HTTPS fallback; usage not metered (Responses not a dialect). opencode MiniMax via :7172→tokenrouter declared=false digest conf=0.25 inferred-000001; stream incomplete. — next: M12 doctor
 2026-08-20 11:05 — proxy — Codex `/v1/responses` is a dialect (SSE + WS text frames); `SseDecoder::finish` flushes leftover JSON; `rewrite_uri` joins an upstream path prefix (OpenRouter `/api`); HTTP WebSocket tunneled on raw TCP because hyper-util Client does not upgrade. Live: Codex exec pong via :7171→opencodex :8080, HTTPS SSE `in=19431 out=1 complete=true` (WS 426 is opencodex disabling the transport, then HTTP fallback). opencode `openrouter/openai/gpt-4o-mini` via :7172→`https://openrouter.ai/api`, `inferred-000003` `in=11828 out=3 complete=true`. MiniMax/tokenrouter still needs credits. — next: none queued
 2026-08-20 10:41 — M12 — doctor on BerriAI/litellm proxy_server_config.yaml → budget-fallback-no-floor (context_window_fallbacks, no floor). Same on oai_misc_config.yaml. — next: none queued
+2026-08-20 11:20 — docs — STATUS.md is the session handoff (queue, live agents, how to release); ROADMAP.md is the M0–M12 archive; JOURNAL append-only; architecture/endgame/launch point at STATUS. — next: cut v0.1.2
 

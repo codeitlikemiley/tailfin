@@ -1,5 +1,7 @@
 # tailfin
 
+**Queue and last facts: [STATUS.md](STATUS.md).** This file is invariants.
+
 A Rust proxy that infers **task structure** from LLM wire traffic, so per-task cost
 accounting — and later a per-task budget — becomes possible for agents nobody modified.
 
@@ -84,36 +86,34 @@ synthetic text unmistakably because it persists in history and prompt cache.
 - Fan-out figures in the launch material came from one real session (48% of
   tokens in a subagent, 1.92× the main thread) priced at illustrative list rates.
   Ratios are real token counts; dollars are not a bill. See docs/launch.md.
+- OpenRouter upstream is `https://openrouter.ai/api` (keep `/api`). Dropping the
+  prefix 404s. HTTP WebSocket is tunneled; HTTPS upgrades are not. opencodex
+  disables Responses WebSocket (426) and Codex falls back to SSE — we meter that.
 
 ## Working protocol
 
-- Work milestone by milestone from ROADMAP.md, top to bottom. One milestone
-  in progress at a time.
-- Before writing code for a milestone, write or extend its tests. `cargo test
-  --workspace` and `cargo clippy --workspace --all-targets` (zero warnings) must pass
-  before any commit.
-- Commit at every gate, message format: `M<n>: <what> [<tests> passing]`.
-  Commit small; never batch two milestones into one commit.
-- After each work block, tick the ROADMAP checkboxes you completed and append one
-  line to JOURNAL.md: `YYYY-MM-DD HH:MM — M<n> — <what happened> — <next>`.
-- Never tick a checkbox with failing tests, and never weaken a test to make it pass.
-  If a test is wrong, say so in the journal and fix it in its own commit.
-- Blocked? Append `BLOCKED:` to JOURNAL.md with what you tried, mark the ROADMAP item
-  `[!]`, move to the next unblocked item if one exists, otherwise stop and ask.
-- Real-agent verification (from M2 on), at **every** milestone: rebuild the `tailfin`
-  binary from the milestone's code, restart the proxy from that new binary (do
-  not reuse the previous milestone's process), then run a real Claude Code
-  session through it with `ANTHROPIC_BASE_URL=http://localhost:7171`. Confirm
-  normal behaviour plus correct ledger output (and, from M7, `tailfin report
-  --share`). This is the gate that matters more than unit tests.
+- **Queue is [STATUS.md](STATUS.md).** ROADMAP.md is a closed M0–M12 archive.
+  JOURNAL.md is append-only. If STATUS.md's queue is empty, stop and ask.
+- Tests before code. `cargo test --workspace` and
+  `cargo clippy --workspace --all-targets --locked -- -D warnings` before a commit.
+- Commit via PR (main is protected). After each block: update STATUS.md, append
+  one JOURNAL.md line: `YYYY-MM-DD HH:MM — <what> — <next>`.
+- Never weaken a test to make it pass. Blocked: `BLOCKED:` in JOURNAL.md, then
+  ask — do not start an unqueued item.
+- Proxy or wire change: rebuild `tailfin`, restart the proxy from that binary,
+  live-test the agent the change affects (Claude Code, Codex, or OpenCode). Do
+  not reuse the previous process. Do not use the human as a test harness.
+- Releases: STATUS.md "How to cut". Tag `v*` publishes GitHub Releases and
+  crates.io via Actions. Never `cargo publish` locally. Formula sha256s are a
+  follow-up PR after `SHA256SUMS` exists.
 
 ## North star (docs/endgame.md) — design consequences only
 
 The endgame ladder: the task boundary makes work **visible** (v0.1), **comparable**
 (replay), **conserved** (vouchers), **attributable** (stamps), and eventually
-**priceable** (actuarial — parked). Read docs/endgame.md once, then treat it as
-follows: it changes DESIGN DECISIONS now; it never changes the current milestone's
-scope.
+**priceable** (actuarial — parked). L2–L4 software shipped; their live calendar
+gates were skipped. Read docs/endgame.md once; it changes DESIGN DECISIONS, never
+the current STATUS.md queue.
 
 1. **Ledger schema is versioned and capture-capable.** Every record carries a
    `schema_version` and a task id stable across process restarts. Full request-body

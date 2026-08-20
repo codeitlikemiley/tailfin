@@ -16,7 +16,7 @@ tailfin's boundary inference — the ability to say "these 40 requests were one 
 
 ---
 
-## Level 1 — the flight recorder *(shipped software: M0–M9; live gates on ROADMAP.md)*
+## Level 1 — the flight recorder *(shipped: M0–M12 software; live facts in STATUS.md)*
 
 Observe, then enforce. The fan-out ledger and the per-task fuse. Covered by the roadmap; skipped here except to note that everything below reuses its exact data structures. Nothing in this document requires new research — only new consumers of the arena and the ledger.
 
@@ -48,8 +48,8 @@ That table is **your routing policy, derived from your work, with ground truth**
 **Why nobody has it:** replay requires task boundaries plus full request capture. Only the thing that draws boundaries can replay them. **Scope:** a weekend on top of M5's ledger. **What kills it:** judge noise (mitigate with bands and native checks), batch API coverage, and storage of response bodies — keep them local, under the user's own keys, with a retention knob, or don't store them at all.
 
 Software path shipped as M8 (stub batch). The calendar gate — a real week of
-captures against live provider batch APIs — is still open on ROADMAP.md. That's
-the number that pays for the product.
+captures against live provider batch APIs — was **skipped** 2026-08-20. Reopen
+only if the human says so. That's the number that would pay for the product.
 
 ---
 
@@ -105,7 +105,12 @@ The provider can't build this — per-token billing *is* the strategic position,
 
 ## The order, and the through-line
 
-**L2–L4 software is on the ladder (M8–M11).** Live gates remain: a week of captures, a published stamp, undeclared-agent field traffic. **L3 (conservation)** is arena bookkeeping (`--max-per-task` / `--subagent-share`). **L4 (stamps)** is a formatter over data the ledger already holds. **L5** waits for trust, deliberately.
+**L2–L4 software shipped (M8–M11).** Live calendar gates were skipped: a week of
+captures, a published stamp. Undeclared-agent field traffic ran (opencode
+one-shot). **L3** is arena bookkeeping (`--max-per-task` / `--subagent-share`).
+**L4** is a formatter over data the ledger already holds. **L5** waits for
+trust, deliberately — parked until the human unparks it. Current queue:
+[STATUS.md](../STATUS.md).
 
 The through-line, which is also the answer to "what are we really building": every level is the same asset. The boundary makes the task **visible** (L1), **comparable** (L2), **conserved** (L3), **attributable** (L4), and finally **priceable** (L5).
 
