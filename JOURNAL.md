@@ -30,4 +30,5 @@ project renamed raz→tailfin on 2026-08-20.
 2026-08-20 06:40 — rename — raz→tailfin everywhere (crates, bins, env, docs, Formula, CI); GitHub codeitlikemiley/tailfin. `tail -f` for the agent's flight. — next: tests + first tag on the new repo
 2026-08-20 07:15 — rename — 115 tests, clippy -D warnings clean; README command output captured from the binary (collapsed); LICENSE Apache-2.0 tailfin contributors — next: create codeitlikemiley/tailfin, push, tag v0.1.0
 2026-08-20 09:30 — crates.io — path+version workspace deps so the six crates can publish; cargo install tailfin — next: publish 0.1.0
+2026-08-20 09:50 — crates.io — publish is CI: tag v* or workflow_dispatch runs scripts/publish-crates.sh; already-published versions skipped — next: 2-day dogfood
 

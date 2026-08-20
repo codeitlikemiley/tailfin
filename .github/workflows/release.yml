@@ -87,6 +87,12 @@ jobs:
             echo "brew install tailfin"
             echo '```'
             echo
+            echo "crates.io (compiles locally):"
+            echo
+            echo '```sh'
+            echo "cargo install tailfin"
+            echo '```'
+            echo
             echo "Checksums are in \`SHA256SUMS\`. macOS arm64/x64 and Linux x64 only — no Windows build."
           } > release-notes.md
       - uses: softprops/action-gh-release@v3

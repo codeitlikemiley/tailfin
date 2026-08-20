@@ -30,7 +30,7 @@ jobs:
       - name: test
         run: cargo test --workspace --locked
       - name: install.sh syntax
-        run: bash -n install.sh
+        run: bash -n install.sh && bash -n scripts/publish-crates.sh && bash -n scripts/pack-release.sh
       - name: pack and install without a second cargo
         run: |
           cargo build -p tailfin --release --locked
