@@ -2,6 +2,11 @@
 
 Gate = the sentence that must be true before the milestone is ticked.
 
+**Where we are (2026-08-20):** M0–M12 *software* is ticked. Open: the M7 2-day
+dogfood, and the calendar gates on M8/M10/M11/M12 (live week of captures,
+aider/opencode, a published stamp PR, a production LiteLLM file). Parked L5
+stays parked. Do not start new milestones until those close.
+
 ## M0 — bootstrap  `[x]`
 - [x] extracted arbor workspace; renamed arbor→raz then raz→tailfin; tests green, clippy clean
 - [x] git repo with initial commit; CLAUDE.md, ROADMAP.md, JOURNAL.md committed
@@ -56,6 +61,7 @@ reconcile with M4's cross-check.
 - [x] GitHub Actions: build + test on push; release workflow producing macOS
       arm64/x64 and Linux x64 binaries on tag
 - [x] install script (curl | sh) and Homebrew tap formula
+- [x] crates.io: six crates; tag `v*` publishes GitHub Releases *and* crates.io via Actions
 - [x] README rewritten around the finding, not the tool; includes the honest-ceiling
       and subscription-auth caveats verbatim from CLAUDE.md
 Gate: on a machine (or clean VM/container) without Rust, install script → working

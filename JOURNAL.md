@@ -32,4 +32,6 @@ project renamed raz→tailfin on 2026-08-20.
 2026-08-20 09:30 — crates.io — path+version workspace deps so the six crates can publish; cargo install tailfin — next: publish 0.1.0
 2026-08-20 09:50 — crates.io — publish is CI: tag v* or workflow_dispatch runs scripts/publish-crates.sh; already-published versions skipped — next: 2-day dogfood
 2026-08-20 10:00 — release — bump 0.1.0 → 0.1.1 (CI publish + formula placeholders) — next: tag v0.1.1
+2026-08-20 10:10 — release — v0.1.1 tagged; GitHub Release + crates.io via Actions (all six crates 0.1.1); formula sha256s in #5 — next: 2-day dogfood
+2026-08-20 10:20 — docs — catch stale "M9 will ship" / prefix-is-shadow / week-one-as-todo; historical JOURNAL and week-one plan left as record — next: 2-day dogfood
 

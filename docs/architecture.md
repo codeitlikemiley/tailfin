@@ -2,6 +2,10 @@
 
 *A Rust proxy that infers task structure from the wire. Solo developer day 1, enterprise later, same binary.*
 
+*Status 2026-08-20:* M0–M12 software is ticked on ROADMAP.md. Remaining work is
+the 2-day dogfood and the calendar gates, not this week-one plan. The day-by-day
+section below is the original plan, kept as the record of intent.
+
 > **tailfin** — the flight recorder lives in the tail because that's what survives
 > a crash. `tail -f` for everything your agent did while you weren't looking.
 
@@ -33,16 +37,18 @@ Not preference — four properties the product actually needs.
 ```
 tailfin/
 ├─ crates/
-│  ├─ tailfin-ident      task identity: header parsers + prefix digest   [BUILT · 15 tests]
-│  ├─ tailfin-wire       SSE decode + provider-agnostic usage extraction [BUILT · 15 tests]
-│  ├─ tailfin-tree       task arena, cost roll-up, admission decisions   [BUILT · 12 tests]
-│  ├─ tailfin-ledger     append-only JSONL → SQLite                      [week 1, day 5]
-│  ├─ tailfin-proxy      hyper service, relay + tee                      [week 1, days 1–2]
-│  ├─ tailfin-policy     classes, floors, arbitration                    [week 4+]
-│  └─ tailfin        run | report | doctor                           [week 1, day 5]
+│  ├─ tailfin-ident      task identity: header parsers + prefix digest
+│  ├─ tailfin-wire       SSE decode + provider-agnostic usage extraction
+│  ├─ tailfin-tree       task arena, cost roll-up, admission decisions
+│  ├─ tailfin-ledger     append-only JSONL, capture/replay/stamp/doctor
+│  ├─ tailfin-proxy      hyper service, relay + tee
+│  └─ tailfin            run | report | replay | stamp | blame | doctor
 ```
 
-The three crates that carry the hard logic **exist and pass 42 tests**. They have no HTTP dependency, no async runtime, and no I/O — which is why they were testable before a single byte moved over a socket. Build the network layer around a core that is already proven.
+The three crates that carry the hard logic have no HTTP dependency, no async
+runtime, and no I/O — which is why they were testable before a single byte moved
+over a socket. `cargo test --workspace` is 115 passing. Classes/floors
+(`tailfin-policy`) were never a crate; they stay a later rung on the ladder.
 
 ---
 

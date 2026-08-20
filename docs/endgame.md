@@ -16,7 +16,7 @@ tailfin's boundary inference — the ability to say "these 40 requests were one 
 
 ---
 
-## Level 1 — the flight recorder *(already planned: v0.1 through M9)*
+## Level 1 — the flight recorder *(shipped software: M0–M9; live gates on ROADMAP.md)*
 
 Observe, then enforce. The fan-out ledger and the per-task fuse. Covered by the roadmap; skipped here except to note that everything below reuses its exact data structures. Nothing in this document requires new research — only new consumers of the arena and the ledger.
 
@@ -31,7 +31,7 @@ The research on this was brutal and specific. Three of four production routers e
 tailfin has what no router has: **complete recorded tasks with real boundaries.** So don't predict — *replay*.
 
 ```
-tailfin replay --last-week --models haiku,gemini-flash,local-qwen --sample 20
+tailfin replay --since 7d --models haiku,gemini-flash,local-qwen --sample 20
 ```
 
 Take twenty completed tasks from the ledger. Resubmit them through the providers' **batch APIs** — half price, off-peak, completely outside the interactive path (which also sidesteps the cache-invalidation objection that kills live A/B routing: batch pricing is cache-free anyway). Score the counterfactual outputs: where the task has a native check, use it (tests pass, code compiles, diff applies); elsewhere use a judge model and report *agreement bands, never verdicts*. Output:
@@ -47,7 +47,9 @@ That table is **your routing policy, derived from your work, with ground truth**
 
 **Why nobody has it:** replay requires task boundaries plus full request capture. Only the thing that draws boundaries can replay them. **Scope:** a weekend on top of M5's ledger. **What kills it:** judge noise (mitigate with bands and native checks), batch API coverage, and storage of response bodies — keep them local, under the user's own keys, with a retention knob, or don't store them at all.
 
-Build this immediately after v0.1. It's the feature that pays for the product with a number.
+Software path shipped as M8 (stub batch). The calendar gate — a real week of
+captures against live provider batch APIs — is still open on ROADMAP.md. That's
+the number that pays for the product.
 
 ---
 
@@ -103,7 +105,7 @@ The provider can't build this — per-token billing *is* the strategic position,
 
 ## The order, and the through-line
 
-Ship **L2 (replay)** right after v0.1 — a weekend of work, and it converts tailfin from "interesting meter" to "paid for itself with a table." **L3 (conservation)** follows — the intra-proxy version is arena bookkeeping, and it's the fuse's natural adult form. **L4 (stamps)** is opportunistic — a formatter over data the ledger already holds. **L5** waits for trust, deliberately.
+**L2–L4 software is on the ladder (M8–M11).** Live gates remain: a week of captures, a published stamp, undeclared-agent field traffic. **L3 (conservation)** is arena bookkeeping (`--max-per-task` / `--subagent-share`). **L4 (stamps)** is a formatter over data the ledger already holds. **L5** waits for trust, deliberately.
 
 The through-line, which is also the answer to "what are we really building": every level is the same asset. The boundary makes the task **visible** (L1), **comparable** (L2), **conserved** (L3), **attributable** (L4), and finally **priceable** (L5).
 
