@@ -71,4 +71,4 @@ docs/prefix-inference.md.
 
 ## Status
 
-Approved 2026-08-20. The 2+ day dogfood checkbox on ROADMAP.md is still open.
+Approved 2026-08-20. The 2+ day dogfood checkbox was skipped 2026-08-20.
