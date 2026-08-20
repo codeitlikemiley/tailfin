@@ -70,6 +70,37 @@ impl SseDecoder {
         }
         out
     }
+
+    /// Emit a leftover frame when the stream ends without a trailing blank line.
+    /// OpenAI-compatible providers (and some error bodies) close after one JSON
+    /// object; without this the meter never sees usage.
+    pub fn finish(&mut self) -> Vec<SseFrame> {
+        let mut out = Vec::new();
+        if !self.data.is_empty() || self.event.is_some() {
+            out.push(SseFrame {
+                event: self.event.take(),
+                data: std::mem::take(&mut self.data).join("\n"),
+            });
+        } else {
+            let leftover = std::mem::take(&mut self.buf);
+            let leftover = leftover.trim().trim_end_matches(['\n', '\r']);
+            if leftover.is_empty() {
+                return out;
+            }
+            if let Some(v) = leftover.strip_prefix("data:") {
+                out.push(SseFrame {
+                    event: None,
+                    data: v.trim().to_string(),
+                });
+            } else {
+                out.push(SseFrame {
+                    event: None,
+                    data: leftover.to_string(),
+                });
+            }
+        }
+        out
+    }
 }
 
 /// Token counts, normalized across providers.
@@ -156,6 +187,9 @@ pub enum Dialect {
     /// `/v1/chat/completions` — usage arrives in one final chunk, and only when
     /// the caller set `stream_options.include_usage`.
     OpenAiChat,
+    /// `/v1/responses` — usage arrives on `response.completed` as
+    /// `input_tokens` / `output_tokens` (Codex, ChatGPT).
+    OpenAiResponses,
 }
 
 impl Dialect {
@@ -163,6 +197,8 @@ impl Dialect {
         let p = path.trim_end_matches('/');
         if p.ends_with("/chat/completions") {
             Some(Self::OpenAiChat)
+        } else if p.ends_with("/responses") || p.contains("/responses/") {
+            Some(Self::OpenAiResponses)
         } else if p.ends_with("/v1/messages") || p.contains("/v1/messages/") {
             Some(Self::AnthropicMessages)
         } else {
@@ -198,6 +234,7 @@ impl Meter {
         match self.dialect {
             Dialect::AnthropicMessages => self.observe_anthropic(frame, &v),
             Dialect::OpenAiChat => self.observe_openai(&v),
+            Dialect::OpenAiResponses => self.observe_responses(frame, &v),
         }
     }
 
@@ -271,6 +308,58 @@ impl Meter {
             .and_then(Value::as_u64)
             .unwrap_or(0);
         self.saw_terminal = true;
+    }
+
+    fn observe_responses(&mut self, frame: &SseFrame, v: &Value) {
+        let kind = frame
+            .event
+            .as_deref()
+            .or_else(|| v.get("type").and_then(Value::as_str));
+        match kind {
+            Some("response.completed") => {
+                if let Some(u) = v
+                    .pointer("/response/usage")
+                    .or_else(|| v.get("usage"))
+                    .filter(|u| !u.is_null())
+                {
+                    self.take_responses(u);
+                    self.saw_terminal = true;
+                }
+            }
+            Some("response.failed") | Some("response.incomplete") => {
+                if let Some(u) = v
+                    .pointer("/response/usage")
+                    .or_else(|| v.get("usage"))
+                    .filter(|u| !u.is_null())
+                {
+                    self.take_responses(u);
+                }
+            }
+            _ => {
+                // Non-streaming JSON: `{"object":"response","usage":{...}}`.
+                if v.get("object").and_then(Value::as_str) == Some("response") {
+                    if let Some(u) = v.get("usage").filter(|u| !u.is_null()) {
+                        self.take_responses(u);
+                        self.saw_terminal = true;
+                    }
+                }
+            }
+        }
+    }
+
+    fn take_responses(&mut self, u: &Value) {
+        let g = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0);
+        let cached = u
+            .pointer("/input_tokens_details/cached_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        self.usage.input = g("input_tokens").saturating_sub(cached);
+        self.usage.cache_read = cached;
+        self.usage.output = g("output_tokens");
+        self.usage.reasoning = u
+            .pointer("/output_tokens_details/reasoning_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
     }
 
     pub fn usage(&self) -> Usage {
@@ -513,6 +602,67 @@ data: {"type":"message_delta","usage":{"output_tokens":250,"output_tokens_detail
             Dialect::for_path("/v1/chat/completions"),
             Some(Dialect::OpenAiChat)
         );
+        assert_eq!(
+            Dialect::for_path("/v1/responses"),
+            Some(Dialect::OpenAiResponses)
+        );
+        assert_eq!(
+            Dialect::for_path("/v1/responses/"),
+            Some(Dialect::OpenAiResponses)
+        );
         assert_eq!(Dialect::for_path("/healthz"), None);
+    }
+
+    #[test]
+    fn responses_completed_event_is_terminal_usage() {
+        let mut m = Meter::new(Dialect::OpenAiResponses);
+        let mut d = SseDecoder::new();
+        let s = r#"event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"pong"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"usage":{"input_tokens":42,"output_tokens":7,"input_tokens_details":{"cached_tokens":10},"output_tokens_details":{"reasoning_tokens":2}}}}
+
+"#;
+        for f in feed(&mut d, s) {
+            m.observe(&f);
+        }
+        let u = m.usage();
+        assert_eq!(u.input, 32);
+        assert_eq!(u.cache_read, 10);
+        assert_eq!(u.output, 7);
+        assert_eq!(u.reasoning, 2);
+        assert!(m.is_complete());
+    }
+
+    #[test]
+    fn responses_stream_without_completed_is_incomplete() {
+        let mut m = Meter::new(Dialect::OpenAiResponses);
+        let mut d = SseDecoder::new();
+        for f in feed(
+            &mut d,
+            "event: response.created\ndata: {\"type\":\"response.created\"}\n\n",
+        ) {
+            m.observe(&f);
+        }
+        assert!(!m.is_complete());
+        assert_eq!(m.usage(), Usage::default());
+    }
+
+    #[test]
+    fn finish_flushes_a_json_body_without_sse_wrapping() {
+        let mut d = SseDecoder::new();
+        assert!(feed(
+            &mut d,
+            "{\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1}}"
+        )
+        .is_empty());
+        let f = d.finish();
+        assert_eq!(f.len(), 1);
+        let mut m = Meter::new(Dialect::OpenAiChat);
+        m.observe(&f[0]);
+        assert_eq!(m.usage().input, 3);
+        assert_eq!(m.usage().output, 1);
+        assert!(m.is_complete());
     }
 }

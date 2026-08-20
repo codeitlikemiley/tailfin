@@ -1,4 +1,5 @@
-use hyper::header::{HeaderMap, HeaderName};
+use hyper::header::{HeaderMap, HeaderName, HeaderValue};
+use hyper::Method;
 
 /// Headers that describe one TCP hop, not the origin request/response.
 ///
@@ -38,6 +39,55 @@ pub fn strip_hop_by_hop(headers: &mut HeaderMap) {
     for name in HOP_BY_HOP {
         headers.remove(*name);
     }
+}
+
+/// GET + `Upgrade: websocket` + `Connection: upgrade`. Codex prefers this for
+/// `/v1/responses`; stripping Upgrade turns it into a plain GET that 404s.
+pub fn is_websocket_upgrade(method: &Method, headers: &HeaderMap) -> bool {
+    if method != Method::GET {
+        return false;
+    }
+    let upgrade = headers
+        .get("upgrade")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|s| s.eq_ignore_ascii_case("websocket"));
+    let connection = headers.get_all("connection").iter().any(|v| {
+        v.to_str()
+            .map(|s| {
+                s.split(',')
+                    .any(|t| t.trim().eq_ignore_ascii_case("upgrade"))
+            })
+            .unwrap_or(false)
+    });
+    upgrade && connection
+}
+
+/// Hop-by-hop strip that keeps the WebSocket handshake headers.
+pub fn strip_hop_keeping_upgrade(headers: &mut HeaderMap) {
+    let mut extra = Vec::new();
+    for value in headers.get_all("connection") {
+        let Ok(s) = value.to_str() else { continue };
+        for token in s.split(',') {
+            let token = token.trim();
+            if token.is_empty() || token.eq_ignore_ascii_case("upgrade") {
+                continue;
+            }
+            if let Ok(name) = HeaderName::from_bytes(token.as_bytes()) {
+                extra.push(name);
+            }
+        }
+    }
+    for name in extra {
+        headers.remove(name);
+    }
+    for name in HOP_BY_HOP {
+        if *name == "connection" || *name == "upgrade" {
+            continue;
+        }
+        headers.remove(*name);
+    }
+    // RFC 6455: hop must send Connection: Upgrade, not leftovers like keep-alive.
+    headers.insert("connection", HeaderValue::from_static("Upgrade"));
 }
 
 #[cfg(test)]
@@ -113,5 +163,38 @@ mod tests {
             h.get("x-claude-code-session-id").map(HeaderValue::as_bytes),
             Some(&b"sess-1"[..])
         );
+    }
+
+    #[test]
+    fn websocket_upgrade_is_detected_on_get() {
+        let mut h = HeaderMap::new();
+        h.insert("connection", hv("Upgrade"));
+        h.insert("upgrade", hv("websocket"));
+        h.insert("sec-websocket-key", hv("dGhlIHNhbXBsZSBub25jZQ=="));
+        assert!(is_websocket_upgrade(&Method::GET, &h));
+        assert!(!is_websocket_upgrade(&Method::POST, &h));
+    }
+
+    #[test]
+    fn strip_hop_keeping_upgrade_preserves_handshake() {
+        let mut h = HeaderMap::new();
+        h.insert("connection", hv("keep-alive, Upgrade"));
+        h.insert("upgrade", hv("websocket"));
+        h.insert("keep-alive", hv("timeout=5"));
+        h.insert("sec-websocket-key", hv("dGhlIHNhbXBsZSBub25jZQ=="));
+        h.insert("sec-websocket-version", hv("13"));
+        h.insert("x-codex-turn-metadata", hv("{}"));
+        strip_hop_keeping_upgrade(&mut h);
+        assert_eq!(
+            h.get("upgrade").map(HeaderValue::as_bytes),
+            Some(&b"websocket"[..])
+        );
+        assert_eq!(
+            h.get("connection").map(HeaderValue::as_bytes),
+            Some(&b"Upgrade"[..])
+        );
+        assert!(h.get("keep-alive").is_none());
+        assert!(h.get("sec-websocket-key").is_some());
+        assert!(h.get("x-codex-turn-metadata").is_some());
     }
 }

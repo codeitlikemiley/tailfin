@@ -110,16 +110,19 @@ second `/v1/messages` after the overshoot.
 - [x] min match depth tuned against real multi-session traffic; false-merge and
       false-split rates measured and recorded in docs/
       *(synthetic corpus in docs/prefix-inference.md: 0/32 false merge, 0/32 false split)*
-Gate: live 2026-08-20. **opencode** `tokenrouter/MiniMax-M3` via
-`http://127.0.0.1:7172` → `https://api.tokenrouter.com`: path
-`/v1/chat/completions`, `declared=false`, prefix digest on, `conf=0.25`,
-task `inferred-000001` (first turn of an undeclared session). Stream hung
-incomplete (upstream did not finish; tokens 0). **Codex** `exec` via
-`http://127.0.0.1:7171` → local opencodex `:8080`: `declared=true`, `conf=1.00`,
-session id as root, replied `pong`. Codex first tried `ws://…/v1/responses`
-(404 — tailfin is HTTP/1, no WebSocket) then fell back to HTTPS. `/v1/responses`
-is not a metered dialect yet (`Dialect::for_path` is messages + chat/completions
-only), so usage frames were incomplete/zero. Not aider.
+Gate: live 2026-08-20. **opencode** `openrouter/openai/gpt-4o-mini` via
+`http://127.0.0.1:7172` → `https://openrouter.ai/api`: path
+`/v1/chat/completions` (upstream prefix `/api` is joined, not replaced),
+`declared=false`, prefix digest on, `conf=0.25`, task `inferred-000003`,
+replied `Pong`, `in=11828 out=3 complete=true`. Earlier MiniMax/tokenrouter
+turn hung incomplete on a `$0` credit limit — that is the upstream, not
+tailfin. **Codex** `exec` via `http://127.0.0.1:7171` → local opencodex
+`:8080`: `declared=true`, `conf=1.00`, session id as root, replied `pong`.
+`/v1/responses` is metered (`Dialect::OpenAiResponses`); HTTPS SSE
+`in=19431 out=1 cache_read=128 complete=true`. Codex prefers
+`ws://…/v1/responses`; tailfin tunnels HTTP upgrades. opencodex returns
+`426 Upgrade Required` (`Responses WebSocket transport is disabled; use HTTP`)
+and Codex falls back to SSE. Not aider.
 
 ## M11 — cost stamps (endgame L4)
 - [x] `tailfin stamp <ref>`: git trailer/note with tasks, cost, models, fan-out,
