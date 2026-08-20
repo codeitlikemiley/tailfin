@@ -19,18 +19,19 @@ milestone. If the queue is empty, stop and ask.
 ## Now
 
 - **Repo:** `codeitlikemiley/tailfin` (this checkout: `/Volumes/goldcoders/Projects/tailfin`)
-- **Version on crates.io / latest GitHub Release:** `0.1.1` until this tag lands
-- **Version in tree:** `0.1.2` — Codex `/v1/responses` dialect, OpenRouter path-prefix join, HTTP WebSocket tunnel
-- **Queue after `v0.1.2` is on GitHub Releases + crates.io:** empty (then fill Formula sha256s)
+- **Version:** `0.1.2` on GitHub Releases and crates.io (all six crates)
+- **Queue:** empty
 - **L5 telemetry:** parked. Human-only to unpark.
 
-### Cut `v0.1.2` (the current job)
+### How to cut the next tag
 
-1. Docs on `main` (this change) + workspace version `0.1.2`.
-2. PR to protected `main`. CI must be green.
-3. Merge, then `git tag v0.1.2 && git push origin v0.1.2`.
-4. Wait for workflows `release` (GitHub Release tarballs) and `crates-io`.
-5. Fill `Formula/tailfin.rb` sha256s from the Release `SHA256SUMS`. Follow-up PR. Never `cargo publish` locally.
+1. Bump `workspace.package.version` and the `tailfin-*` versions in `[workspace.dependencies]`.
+2. Formula `version`, sha256 placeholders; README pin `TAILFIN_VERSION`.
+3. PR to protected `main`. CI green. Merge.
+4. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+5. Wait for workflows `release` and `crates-io`.
+6. Fill `Formula/tailfin.rb` sha256s from the Release `SHA256SUMS`. Follow-up PR.
+7. Never `cargo publish` locally. Update this file's **Version** / **Queue**.
 
 ---
 
@@ -84,7 +85,7 @@ v0.1 never claimed: Gemini, Bedrock, Windows binaries, TLS termination, SQLite, 
 1. Read this file. If the queue is empty, ask the human. Do not scan JOURNAL.md for a "next" and start it.
 2. Proxy or wire changes: tests first; `cargo clippy --workspace --all-targets --locked -- -D warnings`; live-test the agent the change affects (Claude, Codex, or OpenCode). Rebuild the binary, restart the proxy, do not reuse an old process.
 3. After a block: update **this file** (queue + last facts), append one line to JOURNAL.md, PR to `main`.
-4. Releases: the list under **Cut `v0.1.2`** above, then keep that list in sync with the new version.
+4. Releases: the list under **How to cut the next tag**. Then set **Version** / **Queue** here.
 
 ### This machine
 
