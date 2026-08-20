@@ -615,7 +615,7 @@ dependencies = [
 
 [[package]]
 name = "tailfin"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "clap",
  "serde",
@@ -628,11 +628,11 @@ dependencies = [
 
 [[package]]
 name = "tailfin-ident"
-version = "0.1.1"
+version = "0.1.2"
 
 [[package]]
 name = "tailfin-ledger"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "tailfin-proxy"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "tailfin-tree"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "tailfin-ident",
  "tailfin-wire",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "tailfin-wire"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "serde_json",
 ]

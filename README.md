@@ -25,7 +25,7 @@ Prebuilt binaries from [GitHub Releases](https://github.com/codeitlikemiley/tail
 curl -fsSL https://github.com/codeitlikemiley/tailfin/releases/latest/download/install.sh | bash
 ```
 
-Pin a tag with `TAILFIN_VERSION=v0.1.1`. Homebrew:
+Pin a tag with `TAILFIN_VERSION=v0.1.2`. Homebrew:
 
 ```sh
 brew tap codeitlikemiley/tailfin https://github.com/codeitlikemiley/tailfin

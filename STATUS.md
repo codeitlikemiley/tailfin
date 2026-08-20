@@ -19,9 +19,9 @@ milestone. If the queue is empty, stop and ask.
 ## Now
 
 - **Repo:** `codeitlikemiley/tailfin` (this checkout: `/Volumes/goldcoders/Projects/tailfin`)
-- **Version on crates.io / latest GitHub Release:** `0.1.1`
-- **Version this branch is cutting:** `0.1.2` — Codex `/v1/responses` dialect, OpenRouter path-prefix join, HTTP WebSocket tunnel
-- **Queue after `v0.1.2` is on GitHub Releases + crates.io:** empty
+- **Version on crates.io / latest GitHub Release:** `0.1.1` until this tag lands
+- **Version in tree:** `0.1.2` — Codex `/v1/responses` dialect, OpenRouter path-prefix join, HTTP WebSocket tunnel
+- **Queue after `v0.1.2` is on GitHub Releases + crates.io:** empty (then fill Formula sha256s)
 - **L5 telemetry:** parked. Human-only to unpark.
 
 ### Cut `v0.1.2` (the current job)
