@@ -15,9 +15,9 @@ Codex) still take precedence.
 
 Live 2026-08-20: **opencode** (no Claude/Codex headers) hit
 `/v1/chat/completions` through tailfin. First request of the session:
-`declared=false`, prefix digest compared, `conf=0.25`, root `inferred-000001`.
-That is the undeclared path. A continuation at depth ≥ 2 was not observed
-(the stream hung incomplete on MiniMax-M3 / tokenrouter). Synthetic 0/32
+`declared=false`, prefix digest compared, `conf=0.25`, root `inferred-000003`.
+That is the undeclared path. The turn completed (`in=11828 out=3`). A
+continuation at depth ≥ 2 was not observed on this one-shot. Synthetic 0/32
 rates still stand; field `with_min_level` tuning still wants a second turn.
 
 **Codex** is the *declared* path, not this table: `conf=1.00` on

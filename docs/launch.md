@@ -66,8 +66,8 @@ URL; background `cursor-agent` cannot.
 
 Identity is exact for Claude Code and Codex (declared headers). Prefix inference
 is live for undeclared agents (minimum shared depth 2) and carries a confidence
-figure. Field measurement on aider/opencode is still open — see
-docs/prefix-inference.md.
+figure. Live opencode (one-shot, `conf=0.25`) is in docs/prefix-inference.md;
+aider is still unmeasured.
 
 ## Status
 

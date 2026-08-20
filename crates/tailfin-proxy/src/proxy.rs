@@ -1,4 +1,4 @@
-use crate::hop::strip_hop_by_hop;
+use crate::hop::{is_websocket_upgrade, strip_hop_by_hop, strip_hop_keeping_upgrade};
 use crate::identity::{messages_from_body, HeaderView};
 use crate::tee::TeeBody;
 use crate::Error;
@@ -156,6 +156,9 @@ impl Proxy {
         if req.uri().path() == "/api/hello" {
             return Ok(hello_ok());
         }
+        if is_websocket_upgrade(req.method(), req.headers()) {
+            return self.relay_ws(req).await;
+        }
         let (mut parts, body) = req.into_parts();
         // Request JSON is collected so undeclared agents can resolve from a
         // prefix digest. The *response* is still teed, never to_bytes'd.
@@ -262,6 +265,209 @@ impl Proxy {
             .map_err(|e| Box::new(e) as BoxError)
             .boxed();
         Ok(Response::from_parts(parts, body))
+    }
+
+    /// Codex opens `ws://host/v1/responses`. Collecting the GET body and
+    /// stripping `Upgrade` turned that into a plain GET that 404s. Tunnel the
+    /// sockets and scan server-to-client text frames for usage.
+    async fn relay_ws(&self, mut req: Request<Incoming>) -> Result<Response<RelayBody>, BoxError> {
+        let orig_path = req.uri().path().to_string();
+        let node = self
+            .ident
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .resolve(&HeaderView(req.headers()), None);
+        {
+            let mut arena = self.arena.lock().unwrap_or_else(|e| e.into_inner());
+            arena.task_mut(&node.root).begin(&node, None);
+            crate::log::log(format!(
+                "tailfin: begin root={} node={} parent={:?} declared={} conf={:.2} path={} ws=true",
+                node.root,
+                node.node,
+                node.parent,
+                node.source.is_declared(),
+                node.source.confidence(),
+                orig_path
+            ));
+        }
+        let dialect = Dialect::for_path(&orig_path);
+        let client_up = hyper::upgrade::on(&mut req);
+        let (mut parts, _body) = req.into_parts();
+        strip_hop_keeping_upgrade(&mut parts.headers);
+        parts.headers.remove(CONTENT_LENGTH);
+
+        // hyper-util's Client does not perform HTTP upgrades (Codex saw 426).
+        // HTTP upstreams are tunneled on a raw TCP socket. HTTPS still 426s
+        // and Codex falls back to SSE, which we now meter.
+        if self.upstream.scheme_str() == Some("http") {
+            let host = self
+                .upstream
+                .host()
+                .ok_or("websocket upstream missing host")?
+                .to_string();
+            let port = self.upstream.port_u16().unwrap_or(80);
+            let req_pq = parts
+                .uri
+                .path_and_query()
+                .map(|p| p.as_str())
+                .unwrap_or("/");
+            let path = match rewrite_uri(&self.upstream, &parts.uri) {
+                Ok(u) => u
+                    .path_and_query()
+                    .map(|p| p.as_str().to_string())
+                    .unwrap_or_else(|| req_pq.to_string()),
+                Err(_) => req_pq.to_string(),
+            };
+            let (tcp, status, headers) =
+                crate::ws::http_handshake(&host, port, &path, &parts.headers).await?;
+            if status != StatusCode::SWITCHING_PROTOCOLS {
+                self.finish_node(&node, false, None);
+                let mut resp = Response::new(boxed_full(Bytes::from_static(b"")));
+                *resp.status_mut() = status;
+                *resp.headers_mut() = headers;
+                return Ok(resp);
+            }
+            let arena = self.arena.clone();
+            let ledger = self.ledger.clone();
+            let node2 = node.clone();
+            tokio::spawn(async move {
+                match client_up.await {
+                    Ok(client) => {
+                        let mut decoder = SseDecoder::new();
+                        let mut wsdec = crate::ws::WsTextDecoder::default();
+                        let mut meter = dialect.map(UsageMeter::new);
+                        crate::ws::splice_tcp(client, tcp, |bytes| {
+                            if let Some(m) = meter.as_mut() {
+                                for payload in wsdec.push(bytes) {
+                                    for frame in decoder.push(&payload) {
+                                        m.observe(&frame);
+                                    }
+                                    if let Ok(s) = std::str::from_utf8(&payload) {
+                                        let t = s.trim();
+                                        if t.starts_with('{') {
+                                            m.observe(&tailfin_wire::SseFrame {
+                                                event: None,
+                                                data: t.to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .await;
+                        if let Some(m) = meter.as_mut() {
+                            for frame in decoder.finish() {
+                                m.observe(&frame);
+                            }
+                        }
+                        let (usage, complete) = match meter {
+                            Some(m) => (m.usage(), m.is_complete()),
+                            None => (Usage::default(), false),
+                        };
+                        crate::log::log(format!(
+                            "tailfin: ws done in={} out={} complete={complete}",
+                            usage.input, usage.output
+                        ));
+                        finish_locked(&arena, &node2, &usage, complete, &ledger, None);
+                    }
+                    Err(e) => {
+                        crate::log::log(format!("tailfin: websocket upgrade: {e}"));
+                        finish_locked(&arena, &node2, &Usage::default(), false, &ledger, None);
+                    }
+                }
+            });
+            let mut resp = Response::new(boxed_full(Bytes::new()));
+            *resp.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+            *resp.headers_mut() = headers;
+            return Ok(resp);
+        }
+
+        parts.uri = rewrite_uri(&self.upstream, &parts.uri)?;
+        if let Some(auth) = parts.uri.authority() {
+            parts
+                .headers
+                .insert(HOST, HeaderValue::from_str(auth.as_str())?);
+        }
+        let upstream_req = Request::from_parts(
+            parts,
+            Full::new(Bytes::new())
+                .map_err(|never: Infallible| -> BoxError { match never {} })
+                .boxed(),
+        );
+        let mut resp = match self.client.request(upstream_req).await {
+            Ok(r) => r,
+            Err(err) => {
+                self.finish_node(&node, false, None);
+                return Err(Box::new(err));
+            }
+        };
+        if resp.status() != StatusCode::SWITCHING_PROTOCOLS {
+            let (mut parts, body) = resp.into_parts();
+            strip_hop_by_hop(&mut parts.headers);
+            parts.headers.remove(CONTENT_LENGTH);
+            let (tx, rx) = mpsc::channel(TEE_CAPACITY);
+            self.spawn_meter(rx, dialect, node, None);
+            let body = TeeBody::new(body, tx)
+                .map_err(|e| Box::new(e) as BoxError)
+                .boxed();
+            return Ok(Response::from_parts(parts, body));
+        }
+        let upstream_up = hyper::upgrade::on(&mut resp);
+        let (mut parts, _body) = resp.into_parts();
+        strip_hop_keeping_upgrade(&mut parts.headers);
+        parts.headers.remove(CONTENT_LENGTH);
+
+        let arena = self.arena.clone();
+        let ledger = self.ledger.clone();
+        let node2 = node.clone();
+        tokio::spawn(async move {
+            match tokio::try_join!(client_up, upstream_up) {
+                Ok((client, upstream)) => {
+                    let mut decoder = SseDecoder::new();
+                    let mut wsdec = crate::ws::WsTextDecoder::default();
+                    let mut meter = dialect.map(UsageMeter::new);
+                    crate::ws::splice(client, upstream, |bytes| {
+                        if let Some(m) = meter.as_mut() {
+                            for payload in wsdec.push(bytes) {
+                                for frame in decoder.push(&payload) {
+                                    m.observe(&frame);
+                                }
+                                if let Ok(s) = std::str::from_utf8(&payload) {
+                                    let t = s.trim();
+                                    if t.starts_with('{') {
+                                        m.observe(&tailfin_wire::SseFrame {
+                                            event: None,
+                                            data: t.to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .await;
+                    if let Some(m) = meter.as_mut() {
+                        for frame in decoder.finish() {
+                            m.observe(&frame);
+                        }
+                    }
+                    let (usage, complete) = match meter {
+                        Some(m) => (m.usage(), m.is_complete()),
+                        None => (Usage::default(), false),
+                    };
+                    crate::log::log(format!(
+                        "tailfin: ws done in={} out={} complete={complete}",
+                        usage.input, usage.output
+                    ));
+                    finish_locked(&arena, &node2, &usage, complete, &ledger, None);
+                }
+                Err(e) => {
+                    crate::log::log(format!("tailfin: websocket upgrade: {e}"));
+                    finish_locked(&arena, &node2, &Usage::default(), false, &ledger, None);
+                }
+            }
+        });
+
+        Ok(Response::from_parts(parts, boxed_full(Bytes::new())))
     }
 
     fn finish_node(
@@ -376,6 +582,11 @@ impl Proxy {
                     }
                 }
             }
+            if let Some(m) = meter.as_mut() {
+                for frame in decoder.finish() {
+                    m.observe(&frame);
+                }
+            }
             let (usage, complete) = match meter {
                 Some(m) => (m.usage(), m.is_complete()),
                 None => (Usage::default(), false),
@@ -450,12 +661,20 @@ fn install_crypto_provider() {
 
 fn rewrite_uri(upstream: &Uri, req_uri: &Uri) -> Result<Uri, BoxError> {
     let mut parts = upstream.clone().into_parts();
-    parts.path_and_query = Some(
-        req_uri
-            .path_and_query()
-            .cloned()
-            .unwrap_or_else(|| PathAndQuery::from_static("/")),
-    );
+    let req_pq = req_uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+    let base = upstream.path();
+    let path = if base.is_empty() || base == "/" {
+        req_pq.to_string()
+    } else {
+        let base = base.trim_end_matches('/');
+        let rest = if req_pq.starts_with('/') {
+            req_pq
+        } else {
+            return Err("request path must start with /".into());
+        };
+        format!("{base}{rest}")
+    };
+    parts.path_and_query = Some(path.parse::<PathAndQuery>()?);
     Ok(Uri::from_parts(parts)?)
 }
 

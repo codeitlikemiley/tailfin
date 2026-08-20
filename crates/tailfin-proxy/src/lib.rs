@@ -9,6 +9,7 @@ mod log;
 mod proxy;
 mod serve;
 mod tee;
+mod ws;
 
 pub use hop::strip_hop_by_hop;
 pub use log::init as init_log;
@@ -128,7 +129,8 @@ mod tests {
     use std::time::Duration;
     use tailfin_ledger::{CaptureStore, Ledger, DEFAULT_RETENTION};
     use tailfin_wire::Usage;
-    use tokio::net::TcpListener;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::{mpsc, oneshot, Notify};
 
     #[test]
@@ -396,6 +398,49 @@ mod tests {
         assert!(uri.contains("/v1/messages"), "path: {uri}");
         assert!(uri.contains("beta=true"), "query: {uri}");
         assert_eq!(got_body, body);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn upstream_path_prefix_is_joined_not_replaced() {
+        let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let stub = spawn_http_server({
+            let seen = seen.clone();
+            move |req| {
+                let seen = seen.clone();
+                async move {
+                    *seen.lock().unwrap() = Some(req.uri().to_string());
+                    Response::new(Full::new(Bytes::from_static(b"{}")))
+                }
+            }
+        })
+        .await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let uri: Uri = format!("http://{stub}/api").parse().unwrap();
+        let proxy = Proxy::new(uri).unwrap();
+        let (tx, rx) = oneshot::channel();
+        let handle = tokio::spawn(async move {
+            serve(listener, proxy, async {
+                let _ = rx.await;
+            })
+            .await
+            .unwrap();
+        });
+        send(
+            addr,
+            Method::POST,
+            "/v1/chat/completions",
+            HeaderMap::new(),
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        tx.send(()).ok();
+        handle.await.unwrap();
+        let uri = seen.lock().unwrap().clone().expect("stub saw uri");
+        assert!(
+            uri.contains("/api/v1/chat/completions"),
+            "upstream path prefix must be kept: {uri}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -962,6 +1007,7 @@ mod tests {
 
     const ANTHROPIC_SSE: &[u8] = b"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12,\"cache_read_input_tokens\":6000,\"cache_creation\":{\"ephemeral_5m_input_tokens\":100,\"ephemeral_1h_input_tokens\":900}}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":250,\"output_tokens_details\":{\"thinking_tokens\":100}}}\n\n";
     const OPENAI_SSE: &[u8] = b"data: {\"usage\":{\"prompt_tokens\":1000,\"completion_tokens\":40,\"prompt_tokens_details\":{\"cached_tokens\":800},\"completion_tokens_details\":{\"reasoning_tokens\":15}}}\n\ndata: [DONE]\n\n";
+    const RESPONSES_SSE: &[u8] = b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":42,\"output_tokens\":7,\"input_tokens_details\":{\"cached_tokens\":10}}}}\n\n";
     const INCOMPLETE_SSE: &[u8] =
         b"event: message_start\ndata: {\"message\":{\"usage\":{\"input_tokens\":9}}}\n\n";
 
@@ -1073,6 +1119,117 @@ mod tests {
         assert_eq!(u.cache_read, 800);
         assert_eq!(u.output, 40);
         assert_eq!(u.reasoning, 15);
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn responses_usage_is_merged_into_the_arena_node() {
+        let stub = spawn_http_server(|_req| async move {
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Full::new(Bytes::from_static(RESPONSES_SSE)))
+                .unwrap()
+        })
+        .await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        let mut h = HeaderMap::new();
+        h.insert(
+            "x-codex-turn-metadata",
+            HeaderValue::from_static("{\"root_turn_id\":\"codex-root\"}"),
+        );
+        send(
+            proxy_addr,
+            Method::POST,
+            "/v1/responses",
+            h,
+            Bytes::from_static(b"{}"),
+        )
+        .await;
+        let u = wait_usage(&proxy, "codex-root", |u, _| u.output == 7).await;
+        assert_eq!(u.input, 32);
+        assert_eq!(u.cache_read, 10);
+        assert_eq!(u.output, 7);
+        shutdown.send(()).ok();
+        handle.await.unwrap();
+    }
+
+    /// Raw TCP stub that completes a WebSocket handshake and emits one
+    /// Responses usage frame. hyper-util's Client cannot do this hop.
+    async fn spawn_ws_upstream(payload: &'static [u8]) -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("ws stub accept");
+            let mut buf = vec![0u8; 8192];
+            let mut n = 0usize;
+            loop {
+                let k = stream.read(&mut buf[n..]).await.expect("ws stub read");
+                assert!(k > 0, "ws stub eof before headers");
+                n += k;
+                if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+                if n == buf.len() {
+                    panic!("ws stub headers too large");
+                }
+            }
+            let head = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+            assert!(
+                head.contains("upgrade: websocket"),
+                "handshake missing upgrade: {head}"
+            );
+            let resp = concat!(
+                "HTTP/1.1 101 Switching Protocols\r\n",
+                "Upgrade: websocket\r\n",
+                "Connection: Upgrade\r\n",
+                "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n",
+                "\r\n",
+            );
+            stream.write_all(resp.as_bytes()).await.expect("ws 101");
+            let frame = crate::ws::encode_text_frame(payload);
+            stream.write_all(&frame).await.expect("ws frame");
+            let _ = stream.shutdown().await;
+        });
+        addr
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn websocket_responses_usage_is_merged_into_the_arena_node() {
+        const PAYLOAD: &[u8] = br#"{"type":"response.completed","response":{"usage":{"input_tokens":42,"output_tokens":7,"input_tokens_details":{"cached_tokens":10}}}}"#;
+        let stub = spawn_ws_upstream(PAYLOAD).await;
+        let (proxy_addr, shutdown, handle, proxy) = spawn_proxy_cfg(stub, |p| p).await;
+        let mut client = TcpStream::connect(proxy_addr).await.unwrap();
+        let req = format!(
+            "GET /v1/responses HTTP/1.1\r\n\
+             Host: 127.0.0.1:{}\r\n\
+             Upgrade: websocket\r\n\
+             Connection: Upgrade\r\n\
+             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+             Sec-WebSocket-Version: 13\r\n\
+             x-codex-turn-metadata: {{\"root_turn_id\":\"ws-root\"}}\r\n\
+             \r\n",
+            proxy_addr.port()
+        );
+        client.write_all(req.as_bytes()).await.unwrap();
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            client.read_exact(&mut byte).await.unwrap();
+            head.push(byte[0]);
+            if head.ends_with(b"\r\n\r\n") {
+                break;
+            }
+        }
+        let status = String::from_utf8_lossy(&head);
+        assert!(
+            status.contains("101"),
+            "expected switching protocols, got {status}"
+        );
+        let u = wait_usage(&proxy, "ws-root", |u, _| u.output == 7).await;
+        assert_eq!(u.input, 32);
+        assert_eq!(u.cache_read, 10);
+        assert_eq!(u.output, 7);
         shutdown.send(()).ok();
         handle.await.unwrap();
     }
